@@ -2,16 +2,8 @@
 
 #include <SPI.h>
 
-#define SS_PIN      15
-#define RST_PIN     16
-/*
-#define SCK_PIN     14
-#define MISO_PIN    12
-#define MOSI_PIN    13
-*/
-
 CardReader::CardReader() {
-    _mfrc522 = new MFRC522(SS_PIN, RST_PIN, HSPI);
+    _mfrc522 = new MFRC522(CARD_SS_PIN, CARD_RST_PIN, CARD_SPI_BUS);
 }
 
 CardReader::~CardReader() {

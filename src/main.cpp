@@ -7,13 +7,35 @@
 #include "settings.h"
 #include "player.h"
 #include "cardreader.h"
+#include "controller.h"
 
 CardReader  cardReader;
 Player      audioPlayer;
+Controller  controller;
 
 WebServer   server;
 AutoConnect portal(server);
 AutoConnectConfig config("", "12345678");
+
+void onVolumeUp() {
+  Serial.println("Volume up!");
+}
+
+void onVolumeDown() {
+  Serial.println("Volume down!");
+}
+
+void onPause() {
+  Serial.println("Pause!");
+}
+
+void onNext() {
+  Serial.println("Next!");
+}
+
+void onPrevious() {
+  Serial.println("Previous!");
+}
 
 void setup() {
   Serial.begin(115200);
@@ -37,6 +59,12 @@ void setup() {
 
   cardReader.begin();
   audioPlayer.begin();
+  controller.begin();
+  controller.setVolumeUpCallback(onVolumeUp);
+  controller.setVolumeDownCallback(onVolumeDown);
+  controller.setPauseCallback(onPause);
+  controller.setNextCallback(onNext);
+  controller.setPreviousCallback(onPrevious);
 }
 
 void readCard() {

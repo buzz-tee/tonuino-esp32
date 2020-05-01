@@ -223,7 +223,6 @@
             "defines": [
                 "PLATFORMIO=40303",
                 "ARDUINO_ESP32_DEV",
-                "CONFIG_ARDUHAL_LOG_DEFAULT_LEVEL=4",
                 "ESP32",
                 "ESP_PLATFORM",
                 "F_CPU=240000000L",
