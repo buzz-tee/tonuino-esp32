@@ -19,22 +19,27 @@ AutoConnectConfig config("", "12345678");
 
 void onVolumeUp() {
   Serial.println("Volume up!");
+  audioPlayer.volumeUp();
 }
 
 void onVolumeDown() {
   Serial.println("Volume down!");
+  audioPlayer.volumeDown();
 }
 
 void onPause() {
   Serial.println("Pause!");
+  audioPlayer.pause();
 }
 
 void onNext() {
   Serial.println("Next!");
+  audioPlayer.next();
 }
 
 void onPrevious() {
   Serial.println("Previous!");
+  audioPlayer.previous();
 }
 
 void setup() {
@@ -72,7 +77,8 @@ void readCard() {
   if (cardReader.isCardPresent()) {
     if (cardReader.isNewCardPresent()) {
       // New card -> start playing
-      audioPlayer.start("http://192.168.10.2/tonuino/Highwayman.mp3");
+      // audioPlayer.start("http://192.168.10.2/tonuino/Highwayman.mp3");
+      audioPlayer.playlist("http://192.168.10.2/tonuino/Highwayman.m3u");
     } else {
       // Still the same card -> nothing to do
     }
