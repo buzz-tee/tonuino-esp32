@@ -54,7 +54,7 @@ Player::Player() :
 #else
     _buffer = new AudioFileSourceBuffer(_file, 4096);
 #endif
-    _output = new AudioOutputI2S(1, AudioOutputI2S::EXTERNAL_I2S, 32, AudioOutputI2S::APLL_ENABLE);
+    _output = new AudioOutputI2S(0, AudioOutputI2S::EXTERNAL_I2S, 32, AudioOutputI2S::APLL_ENABLE);
     _mp3 = new AudioGeneratorMP3a();
 
 #ifdef PLAYER_DEBUG
@@ -137,7 +137,6 @@ void Player::_playerLoop()
 
         if (_playlistIndex < _playlistUrls.size()) {
             start(_playlistUrls[_playlistIndex]);
-            delay(10);
             return;
         } else {
             _playlistIndex = -1;
@@ -150,7 +149,9 @@ void Player::_playerLoop()
         {
             Serial.println("Stopping");
             _mp3->stop();
-            if (!_stopTriggered) next();
+            if (!_stopTriggered) {
+                next();
+            }
             _stopTriggered = false;
         }
         if (_bufferDirty > 0 && _mp3->isRunning()) {
