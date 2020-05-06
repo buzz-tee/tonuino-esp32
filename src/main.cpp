@@ -85,7 +85,7 @@ void readCard() {
   } else {
     if (audioPlayer.isPlaying()) {
       // Card removed -> stop playing
-      audioPlayer.stop();
+      audioPlayer.stop(true);
     }
   }
 }

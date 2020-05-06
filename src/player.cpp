@@ -44,7 +44,9 @@ Player::Player() :
     _bufferDirty(0),
     _stopTriggered(false),
     _playlistUrls(),
-    _playlistIndex(-1)
+    _playlistIndex(-1),
+    _playlistTriggered(false),
+    _started(0)
 {
     _file = new AudioFileSourceHTTPStream();
 #ifdef PLAYER_SPIRAM
@@ -52,7 +54,7 @@ Player::Player() :
 #else
     _buffer = new AudioFileSourceBuffer(_file, 4096);
 #endif
-    _output = new AudioOutputI2S(1, AudioOutputI2S::EXTERNAL_I2S, 32, AudioOutputI2S::APLL_DISABLE);
+    _output = new AudioOutputI2S(1, AudioOutputI2S::EXTERNAL_I2S, 32, AudioOutputI2S::APLL_ENABLE);
     _mp3 = new AudioGeneratorMP3a();
 
 #ifdef PLAYER_DEBUG
@@ -67,7 +69,7 @@ Player::Player() :
 
 Player::~Player()
 {
-    stop();
+    stop(true);
     delete _mp3;
     delete _output;
     delete _buffer;
@@ -92,6 +94,8 @@ void Player::start(const char *url)
 {
     _pauseTriggered = 0;
     _paused = false;
+    _stopTriggered = false;
+    _started = millis();
     _file->open(url);
     _buffer->seek(0, 0);
     Serial.print("Starting audio stream from "); Serial.println(url);
@@ -106,7 +110,7 @@ bool Player::isPlaying()
     return _mp3->isRunning();
 }
 
-void Player::stop()
+void Player::stop(bool clearPlaylist)
 {
     _output->SetGainF2P6(0);
 
@@ -114,6 +118,8 @@ void Player::stop()
 #ifdef PLAYER_SPIRAM
     _bufferDirty = 16;
 #endif
+    if (clearPlaylist)
+        _clearPlaylist();
 }
 
 void Player::_playerWorker(void *args)
@@ -126,14 +132,26 @@ void Player::_playerWorker(void *args)
 
 void Player::_playerLoop()
 {
+    if (_playlistTriggered) {
+        _playlistTriggered = false;
+
+        if (_playlistIndex < _playlistUrls.size()) {
+            start(_playlistUrls[_playlistIndex]);
+            delay(10);
+            return;
+        } else {
+            _playlistIndex = -1;
+        }
+    }
     if ((_pauseTriggered > 0 || !_paused || _stopTriggered)      // if pause() was triggered, run for one more loop even if _paused is true
         && _mp3->isRunning())
     {
         if (!_mp3->loop() || _stopTriggered)
         {
-            _stopTriggered = false;
             Serial.println("Stopping");
             _mp3->stop();
+            if (!_stopTriggered) next();
+            _stopTriggered = false;
         }
         if (_bufferDirty > 0 && _mp3->isRunning()) {
             _bufferDirty--;
@@ -172,11 +190,17 @@ void Player::_setVolume() {
 }
 
 void Player::next() {
-
+    if (isPlaying()) stop(false);
+    _playlistIndex++;
+    _playlistTriggered = true;
 }
 
 void Player::previous() {
-
+    if (isPlaying()) stop(false);
+    
+    if ((millis() - _started) < PLAYER_PREV_RESTART)
+        _playlistIndex--;
+    _playlistTriggered = true;
 }
 
 void Player::pause() {
@@ -189,21 +213,28 @@ void Player::pause() {
     }
 }
 
-void Player::playlist(const char* url) {
-    stop();
+void Player::_clearPlaylist(void) {
+    stop(false);
     for (int i=0; i<_playlistUrls.size(); i++) {
         free(_playlistUrls[i]);
     }
     _playlistUrls.clear();
-    
+    _playlistIndex = -1;
+}
+
+void Player::playlist(const char* url) {
+    _clearPlaylist();
+
     HTTPClient http;
     http.begin(url);
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK) {
         int len = http.getSize();
-        Serial.printf("GET OK, size = %d\n", len);
+
         uint8_t buff[256] = { 0 };
         WiFiClient* stream = http.getStreamPtr();
+
+        ulong start = millis();
 
         while(http.connected() && (len > 0 || len == -1)) {
             size_t size = stream->available();
@@ -215,17 +246,24 @@ void Player::playlist(const char* url) {
                     playlistEntry[c-1] = '\0';
                     if (playlistEntry[c-2] == '\r') playlistEntry[c-2] = '\0';
                     _playlistUrls.push_back(playlistEntry);
-                    Serial.printf("Got line entry: %s\n", playlistEntry);
+                    Serial.printf("Loaded playlist entry: %s\n", playlistEntry);
                 }
                 if (len > 0) {
                     len -= c;
                 }
             }
-            Serial.printf("Waiting for %d more bytes\n", len);
+
+            if (millis() - start > PLAYER_HTTP_TIMEOUT) {
+                Serial.println("ERROR Timeout in GET request");
+                _clearPlaylist();
+                break;
+            }
             delay(1);
         }
     } else {
         Serial.printf("ERROR GET failed, response code was: %d\n", httpCode);
     }
     http.end();
+
+    next();
 }

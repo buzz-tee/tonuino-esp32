@@ -9,13 +9,16 @@
 #define PLAYER_INIT_VOLUME      2
 #define PLAYER_VOLUME_FACTOR    1
 
+#define PLAYER_HTTP_TIMEOUT     1000
+#define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
+
 class Player {
     public:
         Player();
         ~Player();
         bool begin();
         void start(const char* url);
-        void stop();
+        void stop(bool clearPlaylist);
         bool isPlaying();
 
         void playlist(const char* url);
@@ -41,10 +44,13 @@ class Player {
         bool _stopTriggered;
         std::vector<char*> _playlistUrls;
         uint8_t _playlistIndex;
+        bool _playlistTriggered;
+        ulong _started;
     private:
         static void _playerWorker(void* arg);
         void _playerLoop();
         void _setVolume();
+        void _clearPlaylist();
 };
 
 #endif
