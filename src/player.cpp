@@ -39,14 +39,12 @@ void StatusCallback(void *cbData, int code, const char *string)
 
 Player::Player() :
     _volume(PLAYER_INIT_VOLUME),
-    _paused(false),
-    _pauseTriggered(false),
-    _bufferDirty(0),
-    _stopTriggered(false),
+    _actions(nullptr),
+    _previousAction(NONE),
     _playlistUrls(),
     _playlistIndex(-1),
-    _playlistTriggered(false),
-    _started(0)
+    _started(0),
+    _bufferDirty(0)
 {
     _file = new AudioFileSourceHTTPStream();
 #ifdef PLAYER_SPIRAM
@@ -76,6 +74,101 @@ Player::~Player()
     delete _file;
 }
 
+bool Player::_clearActions(ActionCode keep) {
+    bool found = false;
+    Action* action = _actions;
+    _actions = nullptr;
+    while (action) {
+        Action* next = action->next;
+        if (action->code == keep && _actions == nullptr) {
+            action->next = nullptr;
+            _actions = action;
+            found = true;
+        } else {
+            free(action);
+            action = next;
+        }
+    }
+    return found;
+}
+
+void Player::_addAction(ActionCode code, ulong param, bool asNext) {
+    Action* newAction = (Action*)malloc(sizeof(Action));
+    newAction->code = code;
+    newAction->param = param;
+    newAction->next = nullptr;
+
+    if (asNext) {
+        Serial.printf("Insert action %d at head\n", (int)code);
+        newAction->next = _actions;
+        _actions = newAction;
+    } else {
+        Serial.printf("Insert action %d at tail\n", (int)code);
+        if (_actions == nullptr) {
+            _actions = newAction;
+        } else {
+            Action* action = _actions;
+            while (action) {
+                if (action->next == nullptr) {
+                    action->next = newAction;
+                    break;
+                }
+                action = action->next;
+            }
+        }
+    }
+    _dumpActions();
+}
+
+bool Player::_removeActions(ActionCode code) {
+    bool found = false;
+    Action *newActions = nullptr;
+    Action *action = _actions;
+    Action *prev = nullptr, *next = nullptr;
+
+    while (action) {
+        next = action->next;
+        if (action->code == code) {
+            if (prev) prev->next = nullptr;
+            free(action);
+            found = true;
+        } else {
+            if (prev) prev->next = action;
+            prev = action;
+            if (!newActions) newActions = action;
+        }
+        action = next;
+    }
+    _actions = newActions;
+
+    return found;
+}
+
+Player::ActionCode Player::_nextAction() {
+    if (_actions == nullptr) return NONE;
+
+    Action* action = _actions;
+    ActionCode code = action->code;
+    if (code != _previousAction) _dumpActions();
+    bool consume = true;
+    switch (code) {
+        case PLAY_SILENCE:
+        case BEEP: {
+            consume = (action->param < millis());
+        } break;
+        case PAUSE: {
+            consume = false;
+        } break;
+        default: { }
+    }
+    if (consume) {
+        Serial.printf("Consumed action %d from stack\n", (int)code);
+        _actions = action->next;
+        free(action);
+    }
+    return code;
+}
+
 bool Player::begin()
 {
     disableCore0WDT();
@@ -92,9 +185,6 @@ bool Player::begin()
 
 void Player::start(const char *url)
 {
-    _pauseTriggered = 0;
-    _paused = false;
-    _stopTriggered = false;
     _started = millis();
     _file->open(url);
     _buffer->seek(0, 0);
@@ -102,6 +192,45 @@ void Player::start(const char *url)
     _mp3->begin(_buffer, _output);
     if (_bufferDirty == 0) {
         _setVolume();
+    } else {
+        _output->SetGainF2P6(0);
+    }
+}
+
+void Player::beep(uint16_t ms)
+{
+    ulong end = millis() + ms;
+    int16_t sample[2] = { 440, 440 };
+    const int halfWavelength = (44000 / 440);
+    int count = 0;
+    Serial.println("Starting beep()");
+    while (millis() < end) {
+        if (count % halfWavelength == 0) {
+            sample[0] = -1 * sample[0];
+            sample[1] = -1 * sample[1];
+        }
+
+        if (_output->ConsumeSample(sample)) {
+            count++;
+        } else {
+            Serial.println("Could not send sample");
+        }
+    }
+    sample[0] = 0;
+    sample[1] = 0;
+    _output->SetGainF2P6(0);
+    end = millis() + 200;
+    while (millis() < end) {
+        _output->ConsumeSample(sample);
+    }
+    Serial.println("beep() done");
+}
+
+void Player::_loopSilence() {
+    ulong end = millis() + 10;
+    int16_t sample[2] = { 0, 0 };
+    while (millis() < end) {
+        _output->ConsumeSample(sample);
     }
 }
 
@@ -114,10 +243,13 @@ void Player::stop(bool clearPlaylist)
 {
     _output->SetGainF2P6(0);
 
-    _stopTriggered = true;
+    _clearActions();
+
 #ifdef PLAYER_SPIRAM
     _bufferDirty = 16;
 #endif
+    _addAction(STOP, 0, true);
+    _removeActions(PAUSE);
     if (clearPlaylist)
         _clearPlaylist();
 }
@@ -132,42 +264,52 @@ void Player::_playerWorker(void *args)
 
 void Player::_playerLoop()
 {
-    if (_playlistTriggered) {
-        _playlistTriggered = false;
-
-        if (_playlistIndex < _playlistUrls.size()) {
-            start(_playlistUrls[_playlistIndex]);
-            return;
-        } else {
-            _playlistIndex = -1;
-        }
-    }
-    if ((_pauseTriggered > 0 || !_paused || _stopTriggered)      // if pause() was triggered, run for one more loop even if _paused is true
-        && _mp3->isRunning())
-    {
-        if (!_mp3->loop() || _stopTriggered)
-        {
-            Serial.println("Stopping");
-            _mp3->stop();
-            if (!_stopTriggered) {
-                next();
+    ActionCode action = _nextAction();
+    switch (action) {
+        case PLAYLIST: {
+            if (_playlistIndex < _playlistUrls.size()) {
+                start(_playlistUrls[_playlistIndex]);
+            } else {
+                _addAction(PLAY_SILENCE, millis() + 100);
+                _playlistIndex = -1;
             }
-            _stopTriggered = false;
-        }
-        if (_bufferDirty > 0 && _mp3->isRunning()) {
-            _bufferDirty--;
-            if (_bufferDirty == 0) {
+        } break;
+        case PLAY_SILENCE: {
+            if (_previousAction != PLAY_SILENCE) _output->SetGainF2P6(0);
+            _loopSilence();
+        } break;
+        case BEEP: {
+            beep();
+        } break;
+        case PAUSE: {
+            if (_previousAction != PAUSE) {
+                _output->SetGainF2P6(0);
+                if (_mp3->isRunning()) _mp3->loop();
+            }
+            delay(100);
+        } break;
+        case STOP: {
+            _mp3->stop();
+        } break;
+        case NONE: {
+            if (_previousAction == PAUSE) {
                 _setVolume();
             }
-        }
-        if (_pauseTriggered > 0) {
-            _pauseTriggered--;
-        }
+            if (_mp3->isRunning()) {
+                if (_bufferDirty > 0) {
+                    _bufferDirty--;
+                    if (_bufferDirty == 0) _setVolume();
+                }
+                if (!_mp3->loop()) {
+                    _mp3->stop();
+                    next();
+                }
+            } else {
+                delay(100);
+            }
+        } break;
     }
-    else
-    {
-        delay(100);
-    }
+    _previousAction = action;
 }
 
 void Player::volumeUp() {
@@ -193,7 +335,8 @@ void Player::_setVolume() {
 void Player::next() {
     if (isPlaying()) stop(false);
     _playlistIndex++;
-    _playlistTriggered = true;
+    _addAction(PLAYLIST, 0);
+    _removeActions(PAUSE);
 }
 
 void Player::previous() {
@@ -201,16 +344,17 @@ void Player::previous() {
     
     if ((millis() - _started) < PLAYER_PREV_RESTART)
         _playlistIndex--;
-    _playlistTriggered = true;
+    _addAction(PLAYLIST, 0);
+    _removeActions(PAUSE);
 }
 
 void Player::pause() {
-    _paused = !_paused;
-    if (_paused) {
-        _output->SetGainF2P6(0);
-        _pauseTriggered = 4;
-    } else {
+    bool wasPaused = _removeActions(PAUSE);
+    if (wasPaused) {
         _setVolume();
+    } else {
+        _addAction(PLAY_SILENCE, millis() + 50);
+        _addAction(PAUSE, 0);
     }
 }
 
@@ -267,4 +411,25 @@ void Player::playlist(const char* url) {
     http.end();
 
     next();
+}
+
+void Player::_dumpActions() {
+    Serial.printf("Action Stack:");
+    Action* action = _actions;
+
+    const char names[][16] = {
+        "NONE",
+        "PAUSE",
+        "PLAYLIST",
+        "STOP",
+        "BEEP",
+        "PLAY_SILENCE",
+    };
+
+    while (action) {
+        Serial.printf("   %s ( %lu )", names[(int)action->code], action->param);
+        action = action->next;
+    }
+    Serial.printf("\n");
+    Serial.flush();
 }

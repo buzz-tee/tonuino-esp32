@@ -9,7 +9,7 @@
 #define CTRL_PIN_NEXT           17
 #define CTRL_PIN_PREVIOUS       21
 
-#define COMMAND_DEBOUNCE        500
+#define COMMAND_DEBOUNCE        200
 
 
 class Controller {

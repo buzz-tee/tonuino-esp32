@@ -29,7 +29,21 @@ class Player {
         void previous();
         void pause();
 
+        void beep(uint16_t ms = 200);
     private:
+        enum ActionCode {
+            PAUSE           = 1,
+            PLAYLIST        = 2,
+            STOP            = 3,
+            BEEP            = 5,
+            PLAY_SILENCE    = 6,
+            NONE            = 0
+        };
+        struct Action {
+            Player::ActionCode code;
+            ulong param;
+            Action* next;
+        };
         AudioOutputI2S *_output;
         AudioFileSource *_buffer;
         AudioGeneratorMP3a *_mp3;
@@ -38,19 +52,25 @@ class Player {
         TaskHandle_t _playerTask;
 
         uint8_t _volume;
-        bool _paused;
-        uint8_t _pauseTriggered;
-        uint8_t _bufferDirty;
-        bool _stopTriggered;
+        Action* _actions;
+        ActionCode _previousAction;
+
         std::vector<char*> _playlistUrls;
         uint8_t _playlistIndex;
-        bool _playlistTriggered;
         ulong _started;
+        uint8_t _bufferDirty;
     private:
         static void _playerWorker(void* arg);
         void _playerLoop();
         void _setVolume();
         void _clearPlaylist();
+        bool _clearActions(ActionCode keep = NONE);
+        void _addAction(ActionCode code, ulong param, bool asNext = false);
+        ActionCode _nextAction();
+        bool _removeActions(ActionCode code);
+        void _loopSilence();
+        
+        void _dumpActions();
 };
 
 #endif
