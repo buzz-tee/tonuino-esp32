@@ -63,6 +63,8 @@ Player::Player() :
 
     _output->SetRate(44100);
     _output->SetOutputModeMono(true);
+
+    _beeper = new BeepGenerator(_output);
 }
 
 Player::~Player()
@@ -72,6 +74,7 @@ Player::~Player()
     delete _output;
     delete _buffer;
     delete _file;
+    delete _beeper;
 }
 
 bool Player::_clearActions(ActionCode keep) {
@@ -98,12 +101,13 @@ void Player::_addAction(ActionCode code, ulong param, bool asNext) {
     newAction->param = param;
     newAction->next = nullptr;
 
+    if (code == BEEP || code == SILENCE)
+        newAction->param += millis();
+
     if (asNext) {
-        Serial.printf("Insert action %d at head\n", (int)code);
         newAction->next = _actions;
         _actions = newAction;
     } else {
-        Serial.printf("Insert action %d at tail\n", (int)code);
         if (_actions == nullptr) {
             _actions = newAction;
         } else {
@@ -117,7 +121,9 @@ void Player::_addAction(ActionCode code, ulong param, bool asNext) {
             }
         }
     }
+#ifdef PLAYER_DEBUG
     _dumpActions();
+#endif
 }
 
 bool Player::_removeActions(ActionCode code) {
@@ -149,10 +155,12 @@ Player::ActionCode Player::_nextAction() {
 
     Action* action = _actions;
     ActionCode code = action->code;
+#ifdef PLAYER_DEBUG    
     if (code != _previousAction) _dumpActions();
+#endif
     bool consume = true;
     switch (code) {
-        case PLAY_SILENCE:
+        case SILENCE:
         case BEEP: {
             consume = (action->param < millis());
         } break;
@@ -162,7 +170,9 @@ Player::ActionCode Player::_nextAction() {
         default: { }
     }
     if (consume) {
+#ifdef PLAYER_DEBUG
         Serial.printf("Consumed action %d from stack\n", (int)code);
+#endif
         _actions = action->next;
         free(action);
     }
@@ -197,37 +207,8 @@ void Player::start(const char *url)
     }
 }
 
-void Player::beep(uint16_t ms)
-{
-    ulong end = millis() + ms;
-    int16_t sample[2] = { 440, 440 };
-    const int halfWavelength = (44000 / 440);
-    int count = 0;
-    Serial.println("Starting beep()");
-    while (millis() < end) {
-        if (count % halfWavelength == 0) {
-            sample[0] = -1 * sample[0];
-            sample[1] = -1 * sample[1];
-        }
-
-        if (_output->ConsumeSample(sample)) {
-            count++;
-        } else {
-            Serial.println("Could not send sample");
-        }
-    }
-    sample[0] = 0;
-    sample[1] = 0;
-    _output->SetGainF2P6(0);
-    end = millis() + 200;
-    while (millis() < end) {
-        _output->ConsumeSample(sample);
-    }
-    Serial.println("beep() done");
-}
-
 void Player::_loopSilence() {
-    ulong end = millis() + 10;
+    ulong end = millis() + 50;
     int16_t sample[2] = { 0, 0 };
     while (millis() < end) {
         _output->ConsumeSample(sample);
@@ -270,16 +251,17 @@ void Player::_playerLoop()
             if (_playlistIndex < _playlistUrls.size()) {
                 start(_playlistUrls[_playlistIndex]);
             } else {
-                _addAction(PLAY_SILENCE, millis() + 100);
+                _addAction(SILENCE, 100);
                 _playlistIndex = -1;
             }
         } break;
-        case PLAY_SILENCE: {
-            if (_previousAction != PLAY_SILENCE) _output->SetGainF2P6(0);
+        case SILENCE: {
+            if (_previousAction != SILENCE) _output->SetGainF2P6(0);
             _loopSilence();
         } break;
         case BEEP: {
-            beep();
+            _setVolume();
+            _beeper->loop();
         } break;
         case PAUSE: {
             if (_previousAction != PAUSE) {
@@ -292,7 +274,7 @@ void Player::_playerLoop()
             _mp3->stop();
         } break;
         case NONE: {
-            if (_previousAction == PAUSE) {
+            if (_previousAction == PAUSE || _previousAction == SILENCE) {
                 _setVolume();
             }
             if (_mp3->isRunning()) {
@@ -302,7 +284,7 @@ void Player::_playerLoop()
                 }
                 if (!_mp3->loop()) {
                     _mp3->stop();
-                    next();
+                    next(false);
                 }
             } else {
                 delay(100);
@@ -313,15 +295,18 @@ void Player::_playerLoop()
 }
 
 void Player::volumeUp() {
-    _volume++;
-    if (_volume > PLAYER_MAX_VOLUME) _volume = PLAYER_MAX_VOLUME;
+    if (_volume < PLAYER_MAX_VOLUME) _volume++;
     _setVolume();
+    _addAction(SILENCE, 50, true);
+    _addAction(BEEP, 20, true);
+
 }
 
 void Player::volumeDown() {
-    _volume--;
-    if (_volume < 0) _volume = 0;
+    if (_volume > 0) _volume--;
     _setVolume();
+    _addAction(SILENCE, 50, true);
+    _addAction(BEEP, 20, true);
 }
 
 void Player::_setVolume() {
@@ -332,28 +317,39 @@ void Player::_setVolume() {
     _output->SetGainF2P6(gain);
 }
 
-void Player::next() {
+void Player::next(bool beep) {
     if (isPlaying()) stop(false);
     _playlistIndex++;
+    if (beep) {
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
+    }
     _addAction(PLAYLIST, 0);
     _removeActions(PAUSE);
 }
 
-void Player::previous() {
+void Player::previous(bool beep) {
     if (isPlaying()) stop(false);
     
     if ((millis() - _started) < PLAYER_PREV_RESTART)
         _playlistIndex--;
+    if (beep) {
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
+    }
     _addAction(PLAYLIST, 0);
     _removeActions(PAUSE);
 }
 
 void Player::pause() {
     bool wasPaused = _removeActions(PAUSE);
+
     if (wasPaused) {
         _setVolume();
+        _addAction(BEEP, 20);
     } else {
-        _addAction(PLAY_SILENCE, millis() + 50);
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
         _addAction(PAUSE, 0);
     }
 }
@@ -384,7 +380,7 @@ void Player::playlist(const char* url) {
         while(http.connected() && (len > 0 || len == -1)) {
             size_t size = stream->available();
             if (size) {
-                int c = stream->readBytesUntil('\n', buff, std::min(sizeof(buff), size)) + 1;
+                int c = stream->readBytesUntil('\n', buff, std::min((size_t)sizeof(buff), size)) + 1;
                 if (c > 0 && buff[0] != '#') {
                     char* playlistEntry = (char *)malloc(c);
                     strncpy(playlistEntry, (char *)buff, c-1);
@@ -410,7 +406,7 @@ void Player::playlist(const char* url) {
     }
     http.end();
 
-    next();
+    next(false);
 }
 
 void Player::_dumpActions() {

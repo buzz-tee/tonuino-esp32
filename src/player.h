@@ -25,35 +25,62 @@ class Player {
 
         void volumeUp();
         void volumeDown();
-        void next();
-        void previous();
+        void next(bool beep = true);
+        void previous(bool beep = true);
         void pause();
-
-        void beep(uint16_t ms = 200);
     private:
         enum ActionCode {
-            PAUSE           = 1,
-            PLAYLIST        = 2,
-            STOP            = 3,
-            BEEP            = 5,
-            PLAY_SILENCE    = 6,
-            NONE            = 0
+            PAUSE       = 1,
+            PLAYLIST    = 2,
+            STOP        = 3,
+            BEEP        = 5,
+            SILENCE     = 6,
+            NONE        = 0
         };
         struct Action {
             Player::ActionCode code;
             ulong param;
             Action* next;
         };
+        class BeepGenerator {
+            public:
+                BeepGenerator(AudioOutput* output):
+                    _output(output),
+                    _sample{ 4000, 4000 },
+                    _count(0),
+                    _freq(4000) {
+                    }
+                void loop() {
+                    const uint16_t halfWavelength = (44000 / _freq);
+                    ulong end = millis() + 10;
+                    while (millis() < end) {
+                        if (_count % halfWavelength == 0) {
+                            _sample[0] = -1 * _sample[0];
+                            _sample[1] = -1 * _sample[1];
+                        }
+
+                        if (_output->ConsumeSample(_sample)) {
+                            _count++;
+                        }
+                    }
+                }
+            private:
+                AudioOutput* _output;
+                int16_t _sample[2];
+                uint16_t _count;
+                uint16_t _freq;
+        };
         AudioOutputI2S *_output;
         AudioFileSource *_buffer;
         AudioGeneratorMP3a *_mp3;
         AudioFileSource *_file;
 
+        Player::BeepGenerator *_beeper;
         TaskHandle_t _playerTask;
 
         uint8_t _volume;
-        Action* _actions;
-        ActionCode _previousAction;
+        Player::Action* _actions;
+        Player::ActionCode _previousAction;
 
         std::vector<char*> _playlistUrls;
         uint8_t _playlistIndex;
