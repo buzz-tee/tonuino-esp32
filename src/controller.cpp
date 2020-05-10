@@ -36,10 +36,37 @@ void IRAM_ATTR Controller::trigger(void* arg) {
     if (*(data->callback) == nullptr)
         return;
 
-    u_long previousCommand = data->lastCommand;
-    data->lastCommand = millis();
-    if (data->lastCommand - previousCommand < COMMAND_DEBOUNCE)
+    u_long previousTrigger = data->lastTrigger;
+    data->lastTrigger = millis();
+    if (data->lastTrigger - previousTrigger < COMMAND_DEBOUNCE)
         return;
     
+    data->lastCommand = data->lastTrigger;
     (*(data->callback))();
+}
+
+void Controller::_commandRepeat(CallbackData* data, u_long timeout) {
+    data->lastTrigger = millis();
+    if (data->lastTrigger - data->lastCommand > timeout) {
+        data->lastCommand = data->lastTrigger;
+        (*(data->callback))();
+    }
+}
+
+void Controller::loop() {
+    if (digitalRead(CTRL_PIN_VOLUME_UP) == LOW) {
+        _commandRepeat(&dataVolumeUp, COMMAND_REPEAT);
+    }
+    if (digitalRead(CTRL_PIN_VOLUME_DOWN) == LOW) {
+        _commandRepeat(&dataVolumeDown, COMMAND_REPEAT);
+    }
+    if (digitalRead(CTRL_PIN_NEXT) == LOW) {
+        _commandRepeat(&dataNext, COMMAND_REPEAT);
+    }
+    if (digitalRead(CTRL_PIN_PREVIOUS) == LOW) {
+        _commandRepeat(&dataPrevious, COMMAND_REPEAT);
+    }
+    if (digitalRead(CTRL_PIN_PAUSE) == LOW) {
+        dataPause.lastTrigger = millis(); // we don't repeat pause
+    }
 }

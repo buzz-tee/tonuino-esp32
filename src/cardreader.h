@@ -16,6 +16,8 @@ class CardReader {
         void handleCard();
         bool isCardPresent();
         bool isNewCardPresent();
+
+        bool readCard(char* destination, size_t length);
     private:
         MFRC522* _mfrc522;
 

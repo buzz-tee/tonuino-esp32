@@ -33,6 +33,7 @@ class Player {
             PAUSE       = 1,
             PLAYLIST    = 2,
             STOP        = 3,
+            BEEP_ERROR  = 4,
             BEEP        = 5,
             SILENCE     = 6,
             NONE        = 0
@@ -40,18 +41,17 @@ class Player {
         struct Action {
             Player::ActionCode code;
             ulong param;
-            Action* next;
+            Player::Action* next;
         };
         class BeepGenerator {
             public:
                 BeepGenerator(AudioOutput* output):
                     _output(output),
                     _sample{ 4000, 4000 },
-                    _count(0),
-                    _freq(4000) {
+                    _count(0) {
                     }
-                void loop() {
-                    const uint16_t halfWavelength = (44000 / _freq);
+                void loop(uint16_t freq) {
+                    const uint16_t halfWavelength = (44000 / freq);
                     ulong end = millis() + 10;
                     while (millis() < end) {
                         if (_count % halfWavelength == 0) {
@@ -68,7 +68,6 @@ class Player {
                 AudioOutput* _output;
                 int16_t _sample[2];
                 uint16_t _count;
-                uint16_t _freq;
         };
         AudioOutputI2S *_output;
         AudioFileSource *_buffer;

@@ -101,7 +101,7 @@ void Player::_addAction(ActionCode code, ulong param, bool asNext) {
     newAction->param = param;
     newAction->next = nullptr;
 
-    if (code == BEEP || code == SILENCE)
+    if (code == BEEP || code == SILENCE || code == BEEP_ERROR)
         newAction->param += millis();
 
     if (asNext) {
@@ -153,7 +153,7 @@ bool Player::_removeActions(ActionCode code) {
 Player::ActionCode Player::_nextAction() {
     if (_actions == nullptr) return NONE;
 
-    Action* action = _actions;
+    Player::Action* action = _actions;
     ActionCode code = action->code;
 #ifdef PLAYER_DEBUG    
     if (code != _previousAction) _dumpActions();
@@ -161,6 +161,7 @@ Player::ActionCode Player::_nextAction() {
     bool consume = true;
     switch (code) {
         case SILENCE:
+        case BEEP_ERROR:
         case BEEP: {
             consume = (action->param < millis());
         } break;
@@ -259,9 +260,13 @@ void Player::_playerLoop()
             if (_previousAction != SILENCE) _output->SetGainF2P6(0);
             _loopSilence();
         } break;
+        case BEEP_ERROR: {
+            _setVolume();
+            _beeper->loop(2000);
+        } break;
         case BEEP: {
             _setVolume();
-            _beeper->loop();
+            _beeper->loop(4000);
         } break;
         case PAUSE: {
             if (_previousAction != PAUSE) {
@@ -403,6 +408,10 @@ void Player::playlist(const char* url) {
         }
     } else {
         Serial.printf("ERROR GET failed, response code was: %d\n", httpCode);
+        _addAction(BEEP_ERROR, 150);
+        _addAction(SILENCE, 500);
+        _addAction(BEEP_ERROR, 750);
+        _addAction(SILENCE, 50);
     }
     http.end();
 
@@ -418,8 +427,9 @@ void Player::_dumpActions() {
         "PAUSE",
         "PLAYLIST",
         "STOP",
+        "BEEP_ERROR"
         "BEEP",
-        "PLAY_SILENCE",
+        "SILENCE",
     };
 
     while (action) {
