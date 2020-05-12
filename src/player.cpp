@@ -44,7 +44,8 @@ Player::Player() :
     _playlistUrls(),
     _playlistIndex(-1),
     _started(0),
-    _bufferDirty(0)
+    _bufferDirty(0),
+    _idleSince(1)
 {
     _file = new AudioFileSourceHTTPStream();
 #ifdef PLAYER_SPIRAM
@@ -77,297 +78,7 @@ Player::~Player()
     delete _beeper;
 }
 
-bool Player::_clearActions(ActionCode keep) {
-    bool found = false;
-    Action* action = _actions;
-    _actions = nullptr;
-    while (action) {
-        Action* next = action->next;
-        if (action->code == keep && _actions == nullptr) {
-            action->next = nullptr;
-            _actions = action;
-            found = true;
-        } else {
-            free(action);
-            action = next;
-        }
-    }
-    return found;
-}
-
-void Player::_addAction(ActionCode code, ulong param, bool asNext) {
-    Action* newAction = (Action*)malloc(sizeof(Action));
-    newAction->code = code;
-    newAction->param = param;
-    newAction->next = nullptr;
-
-    if (code == BEEP || code == SILENCE || code == BEEP_ERROR)
-        newAction->param += millis();
-
-    if (asNext) {
-        newAction->next = _actions;
-        _actions = newAction;
-    } else {
-        if (_actions == nullptr) {
-            _actions = newAction;
-        } else {
-            Action* action = _actions;
-            while (action) {
-                if (action->next == nullptr) {
-                    action->next = newAction;
-                    break;
-                }
-                action = action->next;
-            }
-        }
-    }
-#ifdef PLAYER_DEBUG
-    _dumpActions();
-#endif
-}
-
-bool Player::_removeActions(ActionCode code) {
-    bool found = false;
-    Action *newActions = nullptr;
-    Action *action = _actions;
-    Action *prev = nullptr, *next = nullptr;
-
-    while (action) {
-        next = action->next;
-        if (action->code == code) {
-            if (prev) prev->next = nullptr;
-            free(action);
-            found = true;
-        } else {
-            if (prev) prev->next = action;
-            prev = action;
-            if (!newActions) newActions = action;
-        }
-        action = next;
-    }
-    _actions = newActions;
-
-    return found;
-}
-
-Player::ActionCode Player::_nextAction() {
-    if (_actions == nullptr) return NONE;
-
-    Player::Action* action = _actions;
-    ActionCode code = action->code;
-#ifdef PLAYER_DEBUG    
-    if (code != _previousAction) _dumpActions();
-#endif
-    bool consume = true;
-    switch (code) {
-        case SILENCE:
-        case BEEP_ERROR:
-        case BEEP: {
-            consume = (action->param < millis());
-        } break;
-        case PAUSE: {
-            consume = false;
-        } break;
-        default: { }
-    }
-    if (consume) {
-#ifdef PLAYER_DEBUG
-        Serial.printf("Consumed action %d from stack\n", (int)code);
-#endif
-        _actions = action->next;
-        free(action);
-    }
-    return code;
-}
-
-bool Player::begin()
-{
-    disableCore0WDT();
-    xTaskCreatePinnedToCore(
-        Player::_playerWorker,
-        "AudioPlayer",
-        10000,
-        this,
-        10,
-        &this->_playerTask,
-        0);
-    return true;
-}
-
-void Player::start(const char *url)
-{
-    _started = millis();
-    _file->open(url);
-    _buffer->seek(0, 0);
-    Serial.print("Starting audio stream from "); Serial.println(url);
-    _mp3->begin(_buffer, _output);
-    if (_bufferDirty == 0) {
-        _setVolume();
-    } else {
-        _output->SetGainF2P6(0);
-    }
-}
-
-void Player::_loopSilence() {
-    ulong end = millis() + 50;
-    int16_t sample[2] = { 0, 0 };
-    while (millis() < end) {
-        _output->ConsumeSample(sample);
-    }
-}
-
-bool Player::isPlaying()
-{
-    return _mp3->isRunning();
-}
-
-void Player::stop(bool clearPlaylist)
-{
-    _output->SetGainF2P6(0);
-
-    _clearActions();
-
-#ifdef PLAYER_SPIRAM
-    _bufferDirty = 16;
-#endif
-    _addAction(STOP, 0, true);
-    _removeActions(PAUSE);
-    if (clearPlaylist)
-        _clearPlaylist();
-}
-
-void Player::_playerWorker(void *args)
-{
-    for (;;)
-    {
-        ((Player*)args)->_playerLoop();
-    }
-}
-
-void Player::_playerLoop()
-{
-    ActionCode action = _nextAction();
-    switch (action) {
-        case PLAYLIST: {
-            if (_playlistIndex < _playlistUrls.size()) {
-                start(_playlistUrls[_playlistIndex]);
-            } else {
-                _addAction(SILENCE, 100);
-                _playlistIndex = -1;
-            }
-        } break;
-        case SILENCE: {
-            if (_previousAction != SILENCE) _output->SetGainF2P6(0);
-            _loopSilence();
-        } break;
-        case BEEP_ERROR: {
-            _setVolume();
-            _beeper->loop(2000);
-        } break;
-        case BEEP: {
-            _setVolume();
-            _beeper->loop(4000);
-        } break;
-        case PAUSE: {
-            if (_previousAction != PAUSE) {
-                _output->SetGainF2P6(0);
-                if (_mp3->isRunning()) _mp3->loop();
-            }
-            delay(100);
-        } break;
-        case STOP: {
-            _mp3->stop();
-        } break;
-        case NONE: {
-            if (_previousAction == PAUSE || _previousAction == SILENCE) {
-                _setVolume();
-            }
-            if (_mp3->isRunning()) {
-                if (_bufferDirty > 0) {
-                    _bufferDirty--;
-                    if (_bufferDirty == 0) _setVolume();
-                }
-                if (!_mp3->loop()) {
-                    _mp3->stop();
-                    next(false);
-                }
-            } else {
-                delay(100);
-            }
-        } break;
-    }
-    _previousAction = action;
-}
-
-void Player::volumeUp() {
-    if (_volume < PLAYER_MAX_VOLUME) _volume++;
-    _setVolume();
-    _addAction(SILENCE, 50, true);
-    _addAction(BEEP, 20, true);
-
-}
-
-void Player::volumeDown() {
-    if (_volume > 0) _volume--;
-    _setVolume();
-    _addAction(SILENCE, 50, true);
-    _addAction(BEEP, 20, true);
-}
-
-void Player::_setVolume() {
-#ifdef PLAYER_DEBUG
-    Serial.print("_setVolume() => "); Serial.println(_volume);
-#endif
-    uint8_t gain = _volume * PLAYER_VOLUME_FACTOR;
-    _output->SetGainF2P6(gain);
-}
-
-void Player::next(bool beep) {
-    if (isPlaying()) stop(false);
-    _playlistIndex++;
-    if (beep) {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
-    }
-    _addAction(PLAYLIST, 0);
-    _removeActions(PAUSE);
-}
-
-void Player::previous(bool beep) {
-    if (isPlaying()) stop(false);
-    
-    if ((millis() - _started) < PLAYER_PREV_RESTART)
-        _playlistIndex--;
-    if (beep) {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
-    }
-    _addAction(PLAYLIST, 0);
-    _removeActions(PAUSE);
-}
-
-void Player::pause() {
-    bool wasPaused = _removeActions(PAUSE);
-
-    if (wasPaused) {
-        _setVolume();
-        _addAction(BEEP, 20);
-    } else {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
-        _addAction(PAUSE, 0);
-    }
-}
-
-void Player::_clearPlaylist(void) {
-    stop(false);
-    for (int i=0; i<_playlistUrls.size(); i++) {
-        free(_playlistUrls[i]);
-    }
-    _playlistUrls.clear();
-    _playlistIndex = -1;
-}
-
+// Load playlist (M3U format) from URL
 void Player::playlist(const char* url) {
     _clearPlaylist();
 
@@ -418,6 +129,340 @@ void Player::playlist(const char* url) {
     next(false);
 }
 
+// Start playing url
+void Player::start(const char *url)
+{
+    _started = millis();
+    _file->open(url);
+    _buffer->seek(0, 0);
+    Serial.print("Starting audio stream from "); Serial.println(url);
+    _mp3->begin(_buffer, _output);
+    if (_bufferDirty == 0) {
+        _setVolume();
+    } else {
+        _output->SetGainF2P6(0);
+    }
+}
+
+// Stop playing
+// clearPlaylist - remove all tracks from playlist
+// stopPause - clause pause state after expiry
+void Player::stop(bool clearPlaylist, bool stopPause)
+{
+    _output->SetGainF2P6(0);
+
+    _clearActions();
+
+#ifdef PLAYER_SPIRAM
+    _bufferDirty = 16;
+#endif
+    _addAction(stopPause ? PAUSE_STOP : STOP, 0, true);
+    _removeActions(PAUSE);
+    if (!stopPause) _removeActions(PAUSE_STOP);
+
+    if (clearPlaylist)
+        _clearPlaylist();
+}
+
+// Play next track
+// beep - play short confirmation sound
+void Player::next(bool beep) {
+    if (isPlaying()) stop(false);
+    _playlistIndex++;
+    if (beep) {
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
+    }
+    _addAction(PLAYLIST, 0);
+    _removeActions(PAUSE);
+}
+
+// Play previous track
+// beep - play short confirmation sound
+void Player::previous(bool beep) {
+    if (isPlaying()) stop(false);
+    
+    if ((millis() - _started) < PLAYER_PREV_RESTART)
+        _playlistIndex--;
+    if (beep) {
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
+    }
+    _addAction(PLAYLIST, 0);
+    _removeActions(PAUSE);
+}
+
+// Pause / unpause
+void Player::pause() {
+    bool wasPaused = _removeActions(PAUSE);
+    bool wasPauseStopped = _removeActions(PAUSE_STOP);
+
+    if (wasPauseStopped) {
+        _addAction(PLAYLIST, 0);
+    } else if (wasPaused) {
+        _setVolume();
+        _addAction(BEEP, 20);
+    } else {
+        _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
+        _addAction(PAUSE, millis());
+    }
+}
+
+// Increase volume up to PLAYER_MAX_VOLUME
+void Player::volumeUp() {
+    if (_volume < PLAYER_MAX_VOLUME) _volume++;
+    _setVolume();
+    _addAction(SILENCE, 50, true);
+    _addAction(BEEP, 20, true);
+
+}
+
+// Decrease volume
+void Player::volumeDown() {
+    if (_volume > 0) _volume--;
+    _setVolume();
+    _addAction(SILENCE, 50, true);
+    _addAction(BEEP, 20, true);
+}
+
+// Returns true if playback in progress (or paused)
+bool Player::isPlaying()
+{
+    return _mp3->isRunning();
+}
+
+// Plays a short beep sound
+void Player::beep(ulong ms, bool error) {
+    _addAction(SILENCE, 50, true);
+    _addAction(error ? BEEP_ERROR : BEEP, ms, true);
+}
+
+// How long have we been idle?
+// returns 0 if not idle or duration in ms
+ulong Player::idleSince() {
+    if (_idleSince == 0) return 0;
+    else return millis() - _idleSince;
+}
+
+// Starts a task on core 0 the handles the worker loop for player
+bool Player::begin()
+{
+    disableCore0WDT();
+    xTaskCreatePinnedToCore(
+        Player::_worker,
+        "AudioPlayer",
+        10000,
+        this,
+        10,
+        &this->_playerTask,
+        0);
+    return true;
+}
+
+// Callback from player task
+void Player::_worker(void *args)
+{
+    for (;;)
+    {
+        reinterpret_cast<Player*>(args)->_loop();
+    }
+}
+
+// Worker loop
+void Player::_loop()
+{
+    bool idle = false;
+    ActionCode action = _nextAction();
+    switch (action) {
+        case PLAYLIST: {
+            if (_playlistIndex < _playlistUrls.size()) {
+                start(_playlistUrls[_playlistIndex]);
+            } else {
+                _addAction(SILENCE, 100);
+                _playlistIndex = -1;
+            }
+        } break;
+        case SILENCE: {
+            if (_previousAction != SILENCE) _output->SetGainF2P6(0);
+            _loopSilence();
+        } break;
+        case BEEP_ERROR: {
+            _setVolume();
+            _beeper->loop(2000);
+        } break;
+        case BEEP: {
+            _setVolume();
+            _beeper->loop(4000);
+        } break;
+        case PAUSE: {
+            if (_previousAction != PAUSE) {
+                _output->SetGainF2P6(0);
+                if (_mp3->isRunning()) _mp3->loop();
+            }
+            delay(100);
+        } break;
+        case PAUSE_STOP: {
+            if (_previousAction != PAUSE_STOP) {
+                _mp3->stop();
+            }
+            idle = true;
+            delay(100);
+        } break;
+        case STOP: {
+            _mp3->stop();
+        } break;
+        case NONE: {
+            if (_previousAction == PAUSE || _previousAction == PAUSE_STOP || _previousAction == SILENCE) {
+                _setVolume();
+            }
+            if (_mp3->isRunning()) {
+                if (_bufferDirty > 0) {
+                    _bufferDirty--;
+                    if (_bufferDirty == 0) _setVolume();
+                }
+                if (!_mp3->loop()) {
+                    _mp3->stop();
+                    next(false);
+                }
+            } else {
+                idle = true;
+                delay(100);
+            }
+        } break;
+    }
+    if (idle) {
+        if (_idleSince == 0) _idleSince = millis();
+    } else {
+        _idleSince = 0;
+    }
+    _previousAction = action;
+}
+
+// Clear actions stack and free memory
+// keep - specify action code that should stay on stack
+// return true if keep was found on action stack
+bool Player::_clearActions(ActionCode keep) {
+    bool found = false;
+    Action* action = _actions;
+    _actions = nullptr;
+    while (action) {
+        Action* next = action->next;
+        if (action->code == keep && _actions == nullptr) {
+            action->next = nullptr;
+            _actions = action;
+            found = true;
+        } else {
+            free(action);
+            action = next;
+        }
+    }
+    return found;
+}
+
+// Add a new action
+// code - action code
+// param - code specify, ususally timing related
+// asNext - insert on bottom (i.e. next action) of stack vs. on top
+void Player::_addAction(ActionCode code, ulong param, bool asNext) {
+    Action* newAction = (Action*)malloc(sizeof(Action));
+    newAction->code = code;
+    newAction->param = param;
+    newAction->next = nullptr;
+
+    if (code == BEEP || code == SILENCE || code == BEEP_ERROR)
+        newAction->param += millis();
+
+    if (asNext) {
+        newAction->next = _actions;
+        _actions = newAction;
+    } else {
+        if (_actions == nullptr) {
+            _actions = newAction;
+        } else {
+            Action* action = _actions;
+            while (action) {
+                if (action->next == nullptr) {
+                    action->next = newAction;
+                    break;
+                }
+                action = action->next;
+            }
+        }
+    }
+#ifdef PLAYER_DEBUG
+    _dumpActions();
+#endif
+}
+
+// Removes all actions of a specific type from the stack
+// code - action code specifying the type
+// return true if the specified action was found at least once
+bool Player::_removeActions(ActionCode code) {
+    bool found = false;
+    Action *newActions = nullptr;
+    Action *action = _actions;
+    Action *prev = nullptr, *next = nullptr;
+
+    while (action) {
+        next = action->next;
+        if (action->code == code) {
+            if (prev) prev->next = nullptr;
+            free(action);
+            found = true;
+        } else {
+            if (prev) prev->next = action;
+            prev = action;
+            if (!newActions) newActions = action;
+        }
+        action = next;
+    }
+    _actions = newActions;
+
+    return found;
+}
+
+// Gives the next action from (the bottom of) the stack
+// Handles param related actions and removes the action from the stack if appropriate
+// Returns the next action code
+Player::ActionCode Player::_nextAction() {
+    if (_actions == nullptr) return NONE;
+
+    Player::Action* action = _actions;
+    ActionCode code = action->code;
+#ifdef PLAYER_DEBUG    
+    if (code != _previousAction) _dumpActions();
+#endif
+    bool consume = true;
+    switch (code) {
+        case SILENCE:
+        case BEEP_ERROR:
+        case BEEP: {
+            consume = (action->param < millis());
+        } break;
+        case PAUSE: {
+            consume = (millis() - action->param > PLAYER_PAUSE_EXPIRY);
+        } break;
+        case PAUSE_STOP: {
+            consume = false;
+        } break;
+        default: { }
+    }
+    if (consume) {
+#ifdef PLAYER_DEBUG
+        Serial.printf("Consumed action %d from stack\n", (int)code);
+#endif
+        _actions = action->next;
+        free(action);
+        if (code == PAUSE) {
+            stop(false, true);
+        }
+    }
+
+    return code;
+}
+
+// Convenience function, dump actions to serial
 void Player::_dumpActions() {
     Serial.printf("Action Stack:");
     Action* action = _actions;
@@ -430,6 +475,7 @@ void Player::_dumpActions() {
         "BEEP_ERROR"
         "BEEP",
         "SILENCE",
+        "PAUSE_STOP"
     };
 
     while (action) {
@@ -438,4 +484,32 @@ void Player::_dumpActions() {
     }
     Serial.printf("\n");
     Serial.flush();
+}
+
+// Adjust output volume
+void Player::_setVolume() {
+#ifdef PLAYER_DEBUG
+    Serial.print("_setVolume() => "); Serial.println(_volume);
+#endif
+    uint8_t gain = _volume * PLAYER_VOLUME_FACTOR;
+    _output->SetGainF2P6(gain);
+}
+
+// Fills i2s buffer with zero samples
+void Player::_loopSilence() {
+    ulong end = millis() + 50;
+    int16_t sample[2] = { 0, 0 };
+    while (millis() < end) {
+        _output->ConsumeSample(sample);
+    }
+}
+
+// Clear playlist and free memory
+void Player::_clearPlaylist(void) {
+    stop(false);
+    for (int i=0; i<_playlistUrls.size(); i++) {
+        free(_playlistUrls[i]);
+    }
+    _playlistUrls.clear();
+    _playlistIndex = -1;
 }

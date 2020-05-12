@@ -2,6 +2,8 @@
 #define __CONTROLLER_H__
 
 #include <Arduino.h>
+#include <esp_adc_cal.h>
+
 
 #define CTRL_PIN_VOLUME_UP      2
 #define CTRL_PIN_VOLUME_DOWN    4
@@ -12,6 +14,13 @@
 #define COMMAND_DEBOUNCE        200
 #define COMMAND_REPEAT          1000
 
+#define CTRL_PIN_VBAT           33
+#define CTRL_ADC_VBAT_CHANNEL   ADC1_GPIO33_CHANNEL
+#define DEFAULT_VREF            3300
+#define CTRL_VBAT_FACTOR        2.347       // Voltage divider from measurement R1 = 134.7kOhm, R2 = 100kOhm
+
+#define CTRL_VBAT_FULL          3900
+#define CTRL_VBAT_LOW           3300
 
 class Controller {
 public:
@@ -24,7 +33,7 @@ public:
         };
         u_long lastTrigger;
         u_long lastCommand;
-        CallbackFunc callback;
+        Controller::CallbackFunc callback;
     };
 
     Controller();
@@ -33,20 +42,35 @@ public:
 
     void loop();
 
-    void setVolumeUpCallback(CallbackFunc callback) { dataVolumeUp.callback = callback; }
-    void setVolumeDownCallback(CallbackFunc callback) { dataVolumeDown.callback = callback; }
-    void setPauseCallback(CallbackFunc callback) { dataPause.callback = callback; }
-    void setNextCallback(CallbackFunc callback) { dataNext.callback = callback; }
-    void setPreviousCallback(CallbackFunc callback) { dataPrevious.callback = callback; }
+    void setVolumeUpCallback(Controller::CallbackFunc callback) { dataVolumeUp.callback = callback; }
+    void setVolumeDownCallback(Controller::CallbackFunc callback) { dataVolumeDown.callback = callback; }
+    void setPauseCallback(Controller::CallbackFunc callback) { dataPause.callback = callback; }
+    void setNextCallback(Controller::CallbackFunc callback) { dataNext.callback = callback; }
+    void setPreviousCallback(Controller::CallbackFunc callback) { dataPrevious.callback = callback; }
+    
+    void setResetCallback(Controller::CallbackFunc callback) { resetCallback = callback; }
+    void setPartyCallback(Controller::CallbackFunc callback) { partyCallback = callback; }
+
+    bool isOnBattery() { return _onBattery; }
+    bool isUnderVoltage() { return _underVoltage; }
 protected:
     static void IRAM_ATTR trigger(void* arg);
 private:
-    void _commandRepeat(CallbackData* data, u_long timeout);
-    CallbackData dataVolumeUp;
-    CallbackData dataVolumeDown;
-    CallbackData dataPause;
-    CallbackData dataNext;
-    CallbackData dataPrevious;
+    void _commandRepeat(Controller::CallbackData* data, ulong timeout);
+    void _readVoltage();
+
+    Controller::CallbackData dataVolumeUp;
+    Controller::CallbackData dataVolumeDown;
+    Controller::CallbackData dataPause;
+    Controller::CallbackData dataNext;
+    Controller::CallbackData dataPrevious;
+
+    Controller::CallbackFunc resetCallback;
+    Controller::CallbackFunc partyCallback;
+
+    esp_adc_cal_characteristics_t _adcChars;
+    bool _onBattery;
+    bool _underVoltage;
 };
 
 #endif

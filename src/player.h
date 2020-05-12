@@ -11,6 +11,7 @@
 
 #define PLAYER_HTTP_TIMEOUT     1000
 #define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
+#define PLAYER_PAUSE_EXPIRY     60000   // expire pause after 60 seconds -> state to stop, unpause restarts current track
 
 class Player {
     public:
@@ -18,7 +19,7 @@ class Player {
         ~Player();
         bool begin();
         void start(const char* url);
-        void stop(bool clearPlaylist);
+        void stop(bool clearPlaylist, bool stopPause = false);
         bool isPlaying();
 
         void playlist(const char* url);
@@ -28,6 +29,9 @@ class Player {
         void next(bool beep = true);
         void previous(bool beep = true);
         void pause();
+
+        void beep(ulong ms = 200, bool error = false);
+        ulong idleSince();
     private:
         enum ActionCode {
             PAUSE       = 1,
@@ -36,6 +40,7 @@ class Player {
             BEEP_ERROR  = 4,
             BEEP        = 5,
             SILENCE     = 6,
+            PAUSE_STOP  = 7,    // PAUSE has expired (e.g. after 60 seconds close HTTP stream)
             NONE        = 0
         };
         struct Action {
@@ -85,9 +90,10 @@ class Player {
         uint8_t _playlistIndex;
         ulong _started;
         uint8_t _bufferDirty;
+        ulong _idleSince;
     private:
-        static void _playerWorker(void* arg);
-        void _playerLoop();
+        static void _worker(void* arg);
+        void _loop();
         void _setVolume();
         void _clearPlaylist();
         bool _clearActions(ActionCode keep = NONE);

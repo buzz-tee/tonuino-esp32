@@ -9,6 +9,10 @@
 #include "cardreader.h"
 #include "controller.h"
 
+
+#define IDLE_SLEEP_TIMEOUT      120000
+
+
 CardReader cardReader;
 Player audioPlayer;
 Controller controller;
@@ -47,6 +51,20 @@ void onPrevious()
     audioPlayer.previous();
 }
 
+void onReset() {
+    Serial.println("RESET");
+    audioPlayer.beep();
+    delay(250);
+    // TODO
+}
+
+void onParty() {
+    Serial.println("Party");
+    audioPlayer.beep();
+    delay(250);
+    // TODO
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -79,6 +97,9 @@ void setup()
     controller.setPauseCallback(onPause);
     controller.setNextCallback(onNext);
     controller.setPreviousCallback(onPrevious);
+
+    controller.setResetCallback(onReset);
+    controller.setPartyCallback(onParty);
 }
 
 void readCard()
@@ -119,6 +140,15 @@ void loop()
     readCard();
 
     controller.loop();
+
+    if (audioPlayer.idleSince() > IDLE_SLEEP_TIMEOUT) {
+        if (controller.isOnBattery()) {
+            Serial.println("Idle for long AND on battery -> going to deep sleep");
+
+        } else {
+            Serial.println("Idle for long BUT on external power -> do nothing");
+        }
+    }
 
     delay(100);
 }
