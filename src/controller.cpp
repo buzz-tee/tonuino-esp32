@@ -86,6 +86,8 @@ void Controller::_readVoltage() {
 }
 
 void Controller::loop() {
+    _readVoltage();
+    
     bool volumeUpPressed = (digitalRead(CTRL_PIN_VOLUME_UP) == LOW);
     bool volumeDownPressed = (digitalRead(CTRL_PIN_VOLUME_DOWN) == LOW);
     if (volumeUpPressed && volumeDownPressed) {

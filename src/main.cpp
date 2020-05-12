@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <time.h>
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -89,6 +90,8 @@ void setup()
         Serial.println("WiFi connected: " + WiFi.localIP().toString());
     }
 
+    configTime(0, 0, "pool.ntp.org");
+
     cardReader.begin();
     audioPlayer.begin();
     controller.begin();
@@ -100,6 +103,16 @@ void setup()
 
     controller.setResetCallback(onReset);
     controller.setPartyCallback(onParty);
+}
+
+void printLocalTime()
+{
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void readCard()
@@ -142,6 +155,7 @@ void loop()
     controller.loop();
 
     if (audioPlayer.idleSince() > IDLE_SLEEP_TIMEOUT) {
+        printLocalTime();
         if (controller.isOnBattery()) {
             Serial.println("Idle for long AND on battery -> going to deep sleep");
 
