@@ -11,7 +11,10 @@
 
 #define PLAYER_HTTP_TIMEOUT     1000
 #define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
-#define PLAYER_PAUSE_EXPIRY     60000   // expire pause after 60 seconds -> state to stop, unpause restarts current track
+#define PLAYER_PAUSE_EXPIRY     30000   // expire pause after 60 seconds -> state to stop, unpause restarts current track
+
+#define PLAYER_SPIRAM_CS        5
+#define PLAYER_SPIRAM_SIZE      131072
 
 class Player {
     public:

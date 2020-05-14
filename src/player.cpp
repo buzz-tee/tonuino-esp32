@@ -49,7 +49,7 @@ Player::Player() :
 {
     _file = new AudioFileSourceHTTPStream();
 #ifdef PLAYER_SPIRAM
-    _buffer = new AudioFileSourceSPIRAMBuffer(_file, 5, 131072);
+    _buffer = new AudioFileSourceSPIRAMBuffer(_file, PLAYER_SPIRAM_CS, PLAYER_SPIRAM_SIZE);
 #else
     _buffer = new AudioFileSourceBuffer(_file, 4096);
 #endif
@@ -134,7 +134,8 @@ void Player::start(const char *url)
 {
     _started = millis();
     _file->open(url);
-    _buffer->seek(0, 0);
+    // if (seek_start != 0) _file->seek(seek_start, SEEK_SET);
+    _buffer->seek(0, SEEK_SET);
     Serial.print("Starting audio stream from "); Serial.println(url);
     _mp3->begin(_buffer, _output);
     if (_bufferDirty == 0) {
@@ -158,7 +159,15 @@ void Player::stop(bool clearPlaylist, bool stopPause)
 #endif
     _addAction(stopPause ? PAUSE_STOP : STOP, 0, true);
     _removeActions(PAUSE);
-    if (!stopPause) _removeActions(PAUSE_STOP);
+    if (stopPause) {
+        //seek_start = _file->getPos();
+#ifdef PLAYER_SPIRAM
+        //seek_start = (seek_start > PLAYER_SPIRAM_SIZE) ? seek_start - PLAYER_SPIRAM_SIZE : 0;
+#endif
+        //Serial.printf("PAUSE -> STOP at file pos. %d\n", seek_start);
+    } else {
+        _removeActions(PAUSE_STOP);
+    }
 
     if (clearPlaylist)
         _clearPlaylist();
@@ -465,7 +474,7 @@ Player::ActionCode Player::_nextAction() {
 // Convenience function, dump actions to serial
 void Player::_dumpActions() {
     Serial.printf("Action Stack:");
-    Action* action = _actions;
+    Player::Action* action = _actions;
 
     const char names[][16] = {
         "NONE",
@@ -479,7 +488,7 @@ void Player::_dumpActions() {
     };
 
     while (action) {
-        Serial.printf("   %s ( %lu )", names[(int)action->code], action->param);
+        Serial.printf("   %s ( %p, %lu )", names[(int)action->code], action, action->param);
         action = action->next;
     }
     Serial.printf("\n");

@@ -56,7 +56,8 @@ void onReset() {
     Serial.println("RESET");
     audioPlayer.beep();
     delay(250);
-    // TODO
+
+    esp_restart();
 }
 
 void onParty() {
@@ -66,10 +67,35 @@ void onParty() {
     // TODO
 }
 
+void printLocalTime() {
+    struct tm timeinfo;
+    if(!getLocalTime(&timeinfo)) {
+        Serial.println("Failed to obtain time");
+        return;
+    }
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+}
+
+void printWakeupReason() {
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+
+    switch(wakeup_reason) {
+        case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+        case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+        case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+        case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+        case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+        default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+    }
+}
+
+
 void setup()
 {
     Serial.begin(115200);
     Serial.println();
+
+    printWakeupReason();
 
     String softApName = "Tonuino_" + WiFi.macAddress().substring(9);
     softApName.replace(":", "");
@@ -103,16 +129,8 @@ void setup()
 
     controller.setResetCallback(onReset);
     controller.setPartyCallback(onParty);
-}
 
-void printLocalTime()
-{
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    return;
-  }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+    Serial.print("Startup complete: "); printLocalTime();
 }
 
 void readCard()
@@ -154,15 +172,15 @@ void loop()
 
     controller.loop();
 
-    if (audioPlayer.idleSince() > IDLE_SLEEP_TIMEOUT) {
+#ifdef ENABLE_DEEP_SLEEP
+    if (audioPlayer.idleSince() > IDLE_SLEEP_TIMEOUT && controller.isOnBattery()) {
         printLocalTime();
-        if (controller.isOnBattery()) {
-            Serial.println("Idle for long AND on battery -> going to deep sleep");
+        Serial.println("Idle for long AND on battery -> going to deep sleep");
 
-        } else {
-            Serial.println("Idle for long BUT on external power -> do nothing");
-        }
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_27, 0);
+        esp_deep_sleep_start();
     }
+#endif
 
     delay(100);
 }
