@@ -1,7 +1,7 @@
 #ifndef __PLAYER_H__
 #define __PLAYER_H__
 
-#include <AudioFileSource.h>
+#include <AudioFileSourceHTTPStream.h>
 #include <AudioGeneratorMP3a.h>
 #include <AudioOutputI2S.h>
 
@@ -11,10 +11,14 @@
 
 #define PLAYER_HTTP_TIMEOUT     1000
 #define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
-#define PLAYER_PAUSE_EXPIRY     30000   // expire pause after 60 seconds -> state to stop, unpause restarts current track
+#define PLAYER_PAUSE_EXPIRY     30000   // expire pause after 30 seconds -> state to stop, unpause restarts current track
 
+#ifdef PLAYER_SPIRAM
 #define PLAYER_SPIRAM_CS        5
-#define PLAYER_SPIRAM_SIZE      131072
+#define PLAYER_BUFFER_SIZE      131072
+#else
+#define PLAYER_BUFFER_SIZE      4096
+#endif
 
 class Player {
     public:
@@ -80,7 +84,7 @@ class Player {
         AudioOutputI2S *_output;
         AudioFileSource *_buffer;
         AudioGeneratorMP3a *_mp3;
-        AudioFileSource *_file;
+        AudioFileSourceHTTPStream *_file;
 
         Player::BeepGenerator *_beeper;
         TaskHandle_t _playerTask;
@@ -94,6 +98,8 @@ class Player {
         ulong _started;
         uint8_t _bufferDirty;
         ulong _idleSince;
+
+        uint32_t _trackOffset;
     private:
         static void _worker(void* arg);
         void _loop();

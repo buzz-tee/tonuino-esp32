@@ -1,7 +1,6 @@
 #include "player.h"
 
 #include <AudioFileSourceBuffer.h>
-#include <AudioFileSourceHTTPStream.h>
 #ifdef PLAYER_SPIRAM
 #include <AudioFileSourceSPIRAMBuffer.h>
 #else
@@ -45,13 +44,14 @@ Player::Player() :
     _playlistIndex(-1),
     _started(0),
     _bufferDirty(0),
-    _idleSince(1)
+    _idleSince(1),
+    _trackOffset(0)
 {
     _file = new AudioFileSourceHTTPStream();
 #ifdef PLAYER_SPIRAM
-    _buffer = new AudioFileSourceSPIRAMBuffer(_file, PLAYER_SPIRAM_CS, PLAYER_SPIRAM_SIZE);
+    _buffer = new AudioFileSourceSPIRAMBuffer(_file, PLAYER_SPIRAM_CS, PLAYER_BUFFER_SIZE);
 #else
-    _buffer = new AudioFileSourceBuffer(_file, 4096);
+    _buffer = new AudioFileSourceBuffer(_file, PLAYER_BUFFER_SIZE);
 #endif
     _output = new AudioOutputI2S(0, AudioOutputI2S::EXTERNAL_I2S, 32, AudioOutputI2S::APLL_ENABLE);
     _mp3 = new AudioGeneratorMP3a();
@@ -133,10 +133,14 @@ void Player::playlist(const char* url) {
 void Player::start(const char *url)
 {
     _started = millis();
-    _file->open(url);
-    // if (seek_start != 0) _file->seek(seek_start, SEEK_SET);
+    if (_trackOffset != 0) {
+        _file->open(url, _trackOffset);
+        _trackOffset = 0;
+    } else {
+        _file->open(url);
+    }
     _buffer->seek(0, SEEK_SET);
-    Serial.print("Starting audio stream from "); Serial.println(url);
+    Serial.printf("Starting audio stream from %s\n", url);
     _mp3->begin(_buffer, _output);
     if (_bufferDirty == 0) {
         _setVolume();
@@ -160,11 +164,9 @@ void Player::stop(bool clearPlaylist, bool stopPause)
     _addAction(stopPause ? PAUSE_STOP : STOP, 0, true);
     _removeActions(PAUSE);
     if (stopPause) {
-        //seek_start = _file->getPos();
-#ifdef PLAYER_SPIRAM
-        //seek_start = (seek_start > PLAYER_SPIRAM_SIZE) ? seek_start - PLAYER_SPIRAM_SIZE : 0;
-#endif
-        //Serial.printf("PAUSE -> STOP at file pos. %d\n", seek_start);
+        _trackOffset = _file->getPos();
+        _trackOffset = (_trackOffset > PLAYER_BUFFER_SIZE) ? _trackOffset - PLAYER_BUFFER_SIZE : 0;
+        Serial.printf("PAUSE -> STOP at file pos. %d\n", _trackOffset);
     } else {
         _removeActions(PAUSE_STOP);
     }
@@ -285,9 +287,12 @@ void Player::_loop()
     ActionCode action = _nextAction();
     switch (action) {
         case PLAYLIST: {
-            if (_playlistIndex < _playlistUrls.size()) {
+            if (_playlistIndex >= 0 && _playlistIndex < _playlistUrls.size()) {
                 start(_playlistUrls[_playlistIndex]);
             } else {
+#ifdef PLAYER_DEBUG
+                Serial.println("Playlist is finished, stopping here");
+#endif
                 _addAction(SILENCE, 100);
                 _playlistIndex = -1;
             }
@@ -476,19 +481,19 @@ void Player::_dumpActions() {
     Serial.printf("Action Stack:");
     Player::Action* action = _actions;
 
-    const char names[][16] = {
+    const char * names[] = {
         "NONE",
         "PAUSE",
         "PLAYLIST",
         "STOP",
-        "BEEP_ERROR"
+        "BEEP_ERROR",
         "BEEP",
         "SILENCE",
         "PAUSE_STOP"
     };
 
     while (action) {
-        Serial.printf("   %s ( %p, %lu )", names[(int)action->code], action, action->param);
+        Serial.printf("   %d:%s ( %p, %lu )", (int)action->code, names[(int)action->code], action, action->param);
         action = action->next;
     }
     Serial.printf("\n");

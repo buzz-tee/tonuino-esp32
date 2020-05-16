@@ -76,26 +76,11 @@ void printLocalTime() {
     Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
-void printWakeupReason() {
-    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-
-    switch(wakeup_reason) {
-        case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-        case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-        case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
-        case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
-        default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
-    }
-}
-
 
 void setup()
 {
     Serial.begin(115200);
     Serial.println();
-
-    printWakeupReason();
 
     String softApName = "Tonuino_" + WiFi.macAddress().substring(9);
     softApName.replace(":", "");
@@ -130,6 +115,11 @@ void setup()
     controller.setResetCallback(onReset);
     controller.setPartyCallback(onParty);
 
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+        Serial.println("Wakeup from deep sleep");
+        audioPlayer.beep();
+    }
+
     Serial.print("Startup complete: "); printLocalTime();
 }
 
@@ -159,6 +149,7 @@ void readCard()
         if (audioPlayer.isPlaying())
         {
             // Card removed -> stop playing
+            Serial.print("Stop!");
             audioPlayer.stop(true);
         }
     }
