@@ -1,7 +1,8 @@
 include <case.scad>;
-include <quality.scad>;
+include <_quality.scad>;
 
 module case_speaker() {
+    // spk_cage_ring all values in percent!!!
     module spk_cage_ring(od, w, h=$wall) {
         difference() {
             cylinder(d=od / 100 * $spk_clear_d, h=h);
@@ -9,13 +10,13 @@ module case_speaker() {
         }
     };
     $spk_d = 100;
-    $spk_clear_d = 95;
+    $spk_clear_d = 90;
     $screw_dist = 85;
     
     $center = $case_l/2;
     $screw_offset = $screw_dist/2;
     $screw_hole = 4.9;
-    $screw_hole_d = 2.5;
+    $screw_hole_d = 2.75;
     $screw_mount = $screw_hole + 2*$wall;
     
     $mount_h = 3.75;
@@ -34,12 +35,18 @@ module case_speaker() {
     };
     translate([$center, $center, 0]) {
         spk_cage_ring(78, 6);
-        spk_cage_ring(48, 6);
-        spk_cage_ring(18, 0);
+        spk_cage_ring(50, 6);
+        spk_cage_ring(22, 0);
         
         translate([0, 0, $wall/2]) {
-            rotate([0, 0, 45]) cube([$spk_d + 5, 8, $wall], center=true);
-            rotate([0, 0, -45]) cube([$spk_d + 5, 8, $wall], center=true);
+            rotate([0, 0, 45]) {
+                cube([$spk_d + 5, 8, $wall], center=true);
+                translate([0, 0, $wall/2]) rotate([0, 90, 0]) cylinder(d=2*$wall, h=$spk_clear_d - $wall, center=true);
+            }
+            rotate([0, 0, -45]) {
+                cube([$spk_d + 5, 8, $wall], center=true);
+                translate([0, 0, $wall/2]) rotate([0, 90, 0]) cylinder(d=2*$wall, h=$spk_clear_d - $wall, center=true);
+            }
             
             difference() {
                 cylinder(d=$spk_d + 2*$wall, h=$wall*2.5);

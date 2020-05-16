@@ -1,7 +1,4 @@
-$fn=20;
-
-$wall = 1.4;
-$case_l = 120;
+include <_dimensions.scad>;
 
 module case(with_ears=true) {
     module screw_ear(l=15, h=15, left=true) {
@@ -35,7 +32,9 @@ module case(with_ears=true) {
     };
     
     difference() {
-        translate([5, 5, $wall - 1]) cube([$case_l - 10, $case_l - 10, $wall * 2 + 1]);
-        translate([5 + $wall, 5 + $wall, 0]) cube([$case_l - 10 - 2*$wall, $case_l - 10 - 2*$wall, $wall*3 + 1]);
+        translate([$offset_frame, $offset_frame, $wall - 1])
+            cube([$case_l - 2*$offset_frame, $case_l - 2*$offset_frame, $wall * 2 + 1]);
+        translate([$offset_inner, $offset_inner, 0])
+            cube([$case_l - 2*$offset_inner, $case_l - 2*$offset_inner, $wall*3 + 1]);
     }
 };
