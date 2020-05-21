@@ -18,9 +18,9 @@ module case_top() {
     $rfid_mount_d = $rfid_hole + 2*$wall;
     $rfid_dy1 = 12.5;
     $rfid_dy2 = 17;
-    $rfid_dx1 = 18.5;
+    $rfid_dx1 = 14;
     $rfid_dx2 = 23;
-    $magnet_d = 10;
+    $magnet_d = 10.2;
 
     difference() {
         union() {
@@ -40,17 +40,17 @@ module case_top() {
             translate([$case_l - ($offset_frame + $screw_mount_d/2), $case_l - ($offset_frame + $screw_mount_d/2), $wall/2])
                 cylinder(d=$screw_mount_d, h=$screw_mount_h + $wall/2);
         };
-        translate([$offset_frame + $screw_mount_d/2, $offset_frame + $screw_mount_d/2, 1.5 * $wall])
-            cylinder(d=$screw_hole_d, h=$screw_mount_h);
-        translate([$offset_frame + $screw_mount_d/2, $case_l - ($offset_frame + $screw_mount_d/2), 1.5 * $wall])
-            cylinder(d=$screw_hole_d, h=$screw_mount_h);
-        translate([$case_l - ($offset_frame + $screw_mount_d/2), $offset_frame + $screw_mount_d/2, 1.5 * $wall])
-            cylinder(d=$screw_hole_d, h=$screw_mount_h);
-        translate([$case_l - ($offset_frame + $screw_mount_d/2), $case_l - ($offset_frame + $screw_mount_d/2), 1.5 * $wall])
-            cylinder(d=$screw_hole_d, h=$screw_mount_h);
+        translate([$offset_frame + $screw_mount_d/2, $offset_frame + $screw_mount_d/2, 0.75 * $wall])
+            cylinder(d=$screw_hole_d, h=$screw_mount_h+$wall);
+        translate([$offset_frame + $screw_mount_d/2, $case_l - ($offset_frame + $screw_mount_d/2), 0.75 * $wall])
+            cylinder(d=$screw_hole_d, h=$screw_mount_h+$wall);
+        translate([$case_l - ($offset_frame + $screw_mount_d/2), $offset_frame + $screw_mount_d/2, 0.75 * $wall])
+            cylinder(d=$screw_hole_d, h=$screw_mount_h+$wall);
+        translate([$case_l - ($offset_frame + $screw_mount_d/2), $case_l - ($offset_frame + $screw_mount_d/2), 0.75 * $wall])
+            cylinder(d=$screw_hole_d, h=$screw_mount_h+$wall);
         
-        translate([$center, $center, $wall * 1.5 + $nut_h / 2]) rotate([0,0,45]) cube([$screw_hole_diagon + $nut_l, $nut_w, $nut_h], center=true);
-        translate([$center, $center, $wall * 1.5 + $nut_h / 2]) rotate([0,0,-45]) cube([$screw_hole_diagon + $nut_l, $nut_w, $nut_h], center=true);
+        translate([$center, $center, $wall * 2 + $nut_h / 2]) rotate([0,0,45]) cube([$screw_hole_diagon + $nut_l, $nut_w, $nut_h], center=true);
+        translate([$center, $center, $wall * 2 + $nut_h / 2]) rotate([0,0,-45]) cube([$screw_hole_diagon + $nut_l, $nut_w, $nut_h], center=true);
     }
 
     difference() {
