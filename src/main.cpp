@@ -132,10 +132,11 @@ void readCard()
         {
             // New card -> start playing
             char buffer[256];
-            if (cardReader.readCard(buffer, 256) > 0) {
+            if (cardReader.readCard(buffer, 256) > 0 && buffer[0] == 'T') { // want a 'T' for Tonuino
                 String url = getSetting("url");
                 if (!url.endsWith("/")) url += "/";
-                url += buffer;
+                url += "play/";
+                url += (buffer + 1);
                 audioPlayer.playlist(url.c_str());
             }
         }
