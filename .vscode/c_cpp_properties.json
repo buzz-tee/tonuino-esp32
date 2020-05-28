@@ -224,6 +224,7 @@
                 "PLATFORMIO=40303",
                 "ARDUINO_ESP32_DEV",
                 "PLAYER_SPIRAM",
+                "ENABLE_DEEP_SLEEP",
                 "ESP32",
                 "ESP_PLATFORM",
                 "F_CPU=240000000L",

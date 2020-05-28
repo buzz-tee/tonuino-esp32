@@ -6,8 +6,8 @@
 #include <AudioOutputI2S.h>
 
 #define PLAYER_MAX_VOLUME       10
-#define PLAYER_INIT_VOLUME      2
-#define PLAYER_VOLUME_FACTOR    1
+#define PLAYER_INIT_VOLUME      3
+#define PLAYER_VOLUME_FACTOR    2
 
 #define PLAYER_HTTP_TIMEOUT     1000
 #define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in

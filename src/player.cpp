@@ -213,6 +213,7 @@ void Player::pause() {
     } else if (wasPaused) {
         _setVolume();
         _addAction(BEEP, 20);
+        _addAction(SILENCE, 50);
     } else {
         _addAction(BEEP, 20);
         _addAction(SILENCE, 50);
