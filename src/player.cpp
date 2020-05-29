@@ -119,10 +119,10 @@ void Player::playlist(const char* url) {
         }
     } else {
         Serial.printf("ERROR GET failed, response code was: %d\n", httpCode);
-        _addAction(BEEP_ERROR, 150);
-        _addAction(SILENCE, 500);
-        _addAction(BEEP_ERROR, 750);
-        _addAction(SILENCE, 50);
+        _addAction(BEEP, 150, (void*)PLAYER_FREQ_ERROR);
+        _addAction(SILENCE, 500, nullptr);
+        _addAction(BEEP, 750, (void*)PLAYER_FREQ_ERROR);
+        _addAction(SILENCE, 50, nullptr);
     }
     http.end();
 
@@ -161,7 +161,7 @@ void Player::stop(bool clearPlaylist, bool stopPause)
 #ifdef PLAYER_SPIRAM
     _bufferDirty = 16;
 #endif
-    _addAction(stopPause ? PAUSE_STOP : STOP, 0, true);
+    _addAction(stopPause ? PAUSE_STOP : STOP, 0, nullptr, true);
     _removeActions(PAUSE);
     if (stopPause) {
         _trackOffset = _file->getPos();
@@ -181,10 +181,10 @@ void Player::next(bool beep) {
     if (isPlaying()) stop(false);
     _playlistIndex++;
     if (beep) {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
+        _addAction(BEEP, 20, nullptr);
+        _addAction(SILENCE, 50, nullptr);
     }
-    _addAction(PLAYLIST, 0);
+    _addAction(PLAYLIST, 0, nullptr);
     _removeActions(PAUSE);
 }
 
@@ -196,10 +196,10 @@ void Player::previous(bool beep) {
     if ((millis() - _started) < PLAYER_PREV_RESTART)
         _playlistIndex--;
     if (beep) {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
+        _addAction(BEEP, 20, nullptr);
+        _addAction(SILENCE, 50, nullptr);
     }
-    _addAction(PLAYLIST, 0);
+    _addAction(PLAYLIST, 0, nullptr);
     _removeActions(PAUSE);
 }
 
@@ -209,15 +209,15 @@ void Player::pause() {
     bool wasPauseStopped = _removeActions(PAUSE_STOP);
 
     if (wasPauseStopped) {
-        _addAction(PLAYLIST, 0);
+        _addAction(PLAYLIST, 0, nullptr);
     } else if (wasPaused) {
         _setVolume();
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
+        _addAction(BEEP, 20, nullptr);
+        _addAction(SILENCE, 50, nullptr);
     } else {
-        _addAction(BEEP, 20);
-        _addAction(SILENCE, 50);
-        _addAction(PAUSE, millis());
+        _addAction(BEEP, 20, nullptr);
+        _addAction(SILENCE, 50, nullptr);
+        _addAction(PAUSE, millis(), nullptr);
     }
 }
 
@@ -225,8 +225,8 @@ void Player::pause() {
 void Player::volumeUp() {
     if (_volume < PLAYER_MAX_VOLUME) _volume++;
     _setVolume();
-    _addAction(SILENCE, 50, true);
-    _addAction(BEEP, 20, true);
+    _addAction(SILENCE, 50, nullptr, true);
+    _addAction(BEEP, 20, nullptr, true);
 
 }
 
@@ -234,8 +234,8 @@ void Player::volumeUp() {
 void Player::volumeDown() {
     if (_volume > 0) _volume--;
     _setVolume();
-    _addAction(SILENCE, 50, true);
-    _addAction(BEEP, 20, true);
+    _addAction(SILENCE, 50, nullptr, true);
+    _addAction(BEEP, 20, nullptr, true);
 }
 
 // Returns true if playback in progress (or paused)
@@ -245,9 +245,11 @@ bool Player::isPlaying()
 }
 
 // Plays a short beep sound
-void Player::beep(ulong ms, bool error) {
-    _addAction(SILENCE, 50, true);
-    _addAction(error ? BEEP_ERROR : BEEP, ms, true);
+void Player::beep(ulong ms, uint16_t freq) {
+    uint16_t *freq_param = (uint16_t*)malloc(sizeof(uint16_t));
+    (*freq_param) = freq;
+    _addAction(SILENCE, 50, nullptr, true);
+    _addAction(BEEP, ms, freq_param, true);
 }
 
 // How long have we been idle?
@@ -285,8 +287,8 @@ void Player::_worker(void *args)
 void Player::_loop()
 {
     bool idle = false;
-    ActionCode action = _nextAction();
-    switch (action) {
+    _nextAction();
+    switch (_currentAction.code) {
         case PLAYLIST: {
             if (_playlistIndex >= 0 && _playlistIndex < _playlistUrls.size()) {
                 start(_playlistUrls[_playlistIndex]);
@@ -294,7 +296,7 @@ void Player::_loop()
 #ifdef PLAYER_DEBUG
                 Serial.println("Playlist is finished, stopping here");
 #endif
-                _addAction(SILENCE, 100);
+                _addAction(SILENCE, 100, nullptr);
                 _playlistIndex = -1;
             }
         } break;
@@ -302,13 +304,9 @@ void Player::_loop()
             if (_previousAction != SILENCE) _output->SetGainF2P6(0);
             _loopSilence();
         } break;
-        case BEEP_ERROR: {
-            _setVolume();
-            _beeper->loop(2000);
-        } break;
         case BEEP: {
             _setVolume();
-            _beeper->loop(4000);
+            _beeper->loop(*reinterpret_cast<uint16_t*>(_currentAction.param));
         } break;
         case PAUSE: {
             if (_previousAction != PAUSE) {
@@ -351,7 +349,7 @@ void Player::_loop()
     } else {
         _idleSince = 0;
     }
-    _previousAction = action;
+    _previousAction = _currentAction.code;
 }
 
 // Clear actions stack and free memory
@@ -377,16 +375,18 @@ bool Player::_clearActions(ActionCode keep) {
 
 // Add a new action
 // code - action code
-// param - code specify, ususally timing related
+// timestamp - code specify, may indicate action start or end times
+// param - code specific
 // asNext - insert on bottom (i.e. next action) of stack vs. on top
-void Player::_addAction(ActionCode code, ulong param, bool asNext) {
+void Player::_addAction(ActionCode code, ulong timestamp, void* param, bool asNext) {
     Action* newAction = (Action*)malloc(sizeof(Action));
     newAction->code = code;
+    newAction->timestamp = timestamp;
     newAction->param = param;
     newAction->next = nullptr;
 
-    if (code == BEEP || code == SILENCE || code == BEEP_ERROR)
-        newAction->param += millis();
+    if (code == BEEP || code == SILENCE)
+        newAction->timestamp += millis();
 
     if (asNext) {
         newAction->next = _actions;
@@ -439,24 +439,37 @@ bool Player::_removeActions(ActionCode code) {
 
 // Gives the next action from (the bottom of) the stack
 // Handles param related actions and removes the action from the stack if appropriate
+// Note that this is the last location where we have a reference to the current action's param
+// so we free up the memory here if appropriate
 // Returns the next action code
-Player::ActionCode Player::_nextAction() {
-    if (_actions == nullptr) return NONE;
+void Player::_nextAction() {
+    if (_actions == nullptr) {
+        if (_currentAction.param != nullptr) free(_currentAction.param);
 
-    Player::Action* action = _actions;
-    ActionCode code = action->code;
+        _currentAction.code = NONE;
+        _currentAction.timestamp = 0;
+        _currentAction.param = nullptr;
+        _currentAction.next = nullptr;
+        return;
+    }
+
+    if (_currentAction.param != nullptr && _currentAction.param != _actions->param) free(_currentAction.param);
+
+    _currentAction.code = _actions->code;
+    _currentAction.timestamp = _actions->timestamp;
+    _currentAction.param = _actions->param;
+    _currentAction.next = _actions->next;
 #ifdef PLAYER_DEBUG    
     if (code != _previousAction) _dumpActions();
 #endif
     bool consume = true;
-    switch (code) {
+    switch (_currentAction.code) {
         case SILENCE:
-        case BEEP_ERROR:
         case BEEP: {
-            consume = (action->param < millis());
+            consume = (_currentAction.timestamp < millis());
         } break;
         case PAUSE: {
-            consume = (millis() - action->param > PLAYER_PAUSE_EXPIRY);
+            consume = (millis() - _currentAction.timestamp > PLAYER_PAUSE_EXPIRY);
         } break;
         case PAUSE_STOP: {
             consume = false;
@@ -465,16 +478,15 @@ Player::ActionCode Player::_nextAction() {
     }
     if (consume) {
 #ifdef PLAYER_DEBUG
-        Serial.printf("Consumed action %d from stack\n", (int)code);
+        Serial.printf("Consumed action %d from stack\n", (int)_currentAction.code);
 #endif
+        Player::Action* action = _actions;
         _actions = action->next;
         free(action);
-        if (code == PAUSE) {
+        if (_currentAction.code == PAUSE) {
             stop(false, true);
         }
     }
-
-    return code;
 }
 
 // Convenience function, dump actions to serial
@@ -494,7 +506,7 @@ void Player::_dumpActions() {
     };
 
     while (action) {
-        Serial.printf("   %d:%s ( %p, %lu )", (int)action->code, names[(int)action->code], action, action->param);
+        Serial.printf("   %d:%s ( %p, %lu, %p )", (int)action->code, names[(int)action->code], action, action->timestamp, action->param);
         action = action->next;
     }
     Serial.printf("\n");

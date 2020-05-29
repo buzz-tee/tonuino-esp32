@@ -7,4 +7,6 @@
 void registerSettings(AutoConnect& ac);
 String getSetting(const String& key);
 
+String getUrl(const String& subPath);
+
 #endif

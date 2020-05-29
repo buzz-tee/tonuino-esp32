@@ -9,6 +9,9 @@
 #define PLAYER_INIT_VOLUME      3
 #define PLAYER_VOLUME_FACTOR    2
 
+#define PLAYER_FREQ_BEEP        4000
+#define PLAYER_FREQ_ERROR       2000
+
 #define PLAYER_HTTP_TIMEOUT     1000
 #define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
 #define PLAYER_PAUSE_EXPIRY     30000   // expire pause after 30 seconds -> state to stop, unpause restarts current track
@@ -37,22 +40,22 @@ class Player {
         void previous(bool beep = true);
         void pause();
 
-        void beep(ulong ms = 200, bool error = false);
+        void beep(ulong ms = 200, uint16_t freq = PLAYER_FREQ_BEEP);
         ulong idleSince();
     private:
         enum ActionCode {
             PAUSE       = 1,
             PLAYLIST    = 2,
             STOP        = 3,
-            BEEP_ERROR  = 4,
-            BEEP        = 5,
-            SILENCE     = 6,
-            PAUSE_STOP  = 7,    // PAUSE has expired (e.g. after 60 seconds close HTTP stream)
+            BEEP        = 4,
+            SILENCE     = 5,
+            PAUSE_STOP  = 6,    // PAUSE has expired (e.g. after 60 seconds close HTTP stream)
             NONE        = 0
         };
         struct Action {
             Player::ActionCode code;
-            ulong param;
+            ulong timestamp;
+            void* param;
             Player::Action* next;
         };
         class BeepGenerator {
@@ -91,6 +94,7 @@ class Player {
 
         uint8_t _volume;
         Player::Action* _actions;
+        Player::Action _currentAction;
         Player::ActionCode _previousAction;
 
         std::vector<char*> _playlistUrls;
@@ -106,8 +110,8 @@ class Player {
         void _setVolume();
         void _clearPlaylist();
         bool _clearActions(ActionCode keep = NONE);
-        void _addAction(ActionCode code, ulong param, bool asNext = false);
-        ActionCode _nextAction();
+        void _addAction(ActionCode code, ulong timestamp, void* param, bool asNext = false);
+        void _nextAction();
         bool _removeActions(ActionCode code);
         void _loopSilence();
         

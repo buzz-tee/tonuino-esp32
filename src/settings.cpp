@@ -58,3 +58,9 @@ String getSetting(const String &key)
         return String("");
     }
 }
+
+String getUrl(const String &subPath) {
+    String url = getSetting("url");
+    if (!url.endsWith("/")) url += "/";
+    return url + subPath;
+}
