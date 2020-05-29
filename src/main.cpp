@@ -22,6 +22,8 @@ WebServer server;
 AutoConnect portal(server);
 AutoConnectConfig config("", "12345678");
 
+bool greetingSent = false;
+
 void onVolumeUp()
 {
     Serial.println("Volume up!");
@@ -155,6 +157,20 @@ void readCard()
 
 void loop()
 {
+    if (!greetingSent) {
+        greetingSent = true;
+        String url = getUrl("greet/") + getSetting("key");
+        HTTPClient http;
+        http.begin(url);
+        int httpCode = http.GET();
+        if (httpCode == HTTP_CODE_OK) {
+            audioPlayer.beep(200, 2000);
+            audioPlayer.beep(200, 4000);
+            audioPlayer.beep(200, 8000);
+        } else {
+            audioPlayer.beep(500, PLAYER_FREQ_ERROR);
+        }
+    }
     portal.handleClient();
 
     readCard();
