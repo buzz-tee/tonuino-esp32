@@ -1,13 +1,13 @@
 {
 	"folders": [
 		{
-			"path": "."
-		},
-		{
 			"path": "lib/ESP8266Audio"
 		},
 		{
 			"path": "lib/rfid"
+		},
+		{
+			"path": "."
 		}
 	],
 	"settings": {
