@@ -9,8 +9,8 @@ module case_bottom() {
     $screw_head_h = 5;
     $center = $case_l / 2;
     
-    $docking_d = 54;
-    $docking_h = 15;
+    $docking_d = 53;
+    $docking_h = 16;
     
     $switch_y = 20;
     $switch_w = 13;
@@ -18,6 +18,7 @@ module case_bottom() {
     $switch_frame = 3;
     $switch_h = 7;
     
+    $power_h = 3.5;
     $power_d = 8;
     $power_d_max = 16;
     
@@ -47,8 +48,8 @@ module case_bottom() {
                 cylinder(d=$screw_mount_d, h=$screw_mount_h + $wall/2);
             }
             translate([$center, $center, $wall/2]) {
-                cylinder(d=$docking_d + 3*$wall, h=$docking_h + 2*$wall);
-                cylinder(d=$power_d_max + 3*$wall, h=$docking_h + 3*$wall);
+                cylinder(d=$docking_d + 3*$wall, h=$docking_h + 2.5*$wall);
+                cylinder(d=$power_d_max + 3*$wall, h=$docking_h + $power_h + 2*$wall);
             };
             translate([$center, $switch_y, $switch_h/2+$wall/2])
                 cube([$switch_l+$switch_frame+2*$wall, $switch_w+$switch_frame+2*$wall, $switch_h+$wall], center=true);
@@ -75,8 +76,8 @@ module case_bottom() {
         };
         translate([$center, $center, -$wall/2]) {
             cylinder(d=$docking_d, h=$docking_h + $wall/2);
-            cylinder(d=$power_d_max, h=$docking_h + 2.5*$wall);
-            cylinder(d=$power_d, h=$docking_h + 4.5*$wall);
+            cylinder(d=$power_d_max, h=$docking_h + $power_h + $wall/2);
+            cylinder(d=$power_d, h=$docking_h + $power_h + 4*$wall);
         };
         
         translate([$center, $switch_y, $switch_h/2-$wall/4])
