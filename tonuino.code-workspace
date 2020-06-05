@@ -3,6 +3,9 @@
 		{
 			"path": "."
 		},
+		{
+			"path": "lib/ESP8266Audio"
+		}
 	],
 	"settings": {
 		"files.associations": {
