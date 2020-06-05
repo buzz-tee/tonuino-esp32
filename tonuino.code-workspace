@@ -1,13 +1,16 @@
 {
 	"folders": [
 		{
-			"path": "lib/ESP8266Audio"
+			"name": "tonuino-esp32",
+			"path": "."
 		},
 		{
+			"name": "rfid",
 			"path": "lib/rfid"
 		},
 		{
-			"path": "."
+			"name": "ESP8266Audio",
+			"path": "lib/ESP8266Audio"
 		}
 	],
 	"settings": {
