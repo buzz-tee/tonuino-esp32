@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "lib/ESP8266Audio"
+		},
+		{
+			"path": "lib/rfid"
 		}
 	],
 	"settings": {
