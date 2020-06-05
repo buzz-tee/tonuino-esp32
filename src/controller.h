@@ -12,7 +12,7 @@
 #define CTRL_PIN_PREVIOUS       21
 
 #define COMMAND_DEBOUNCE        200
-#define COMMAND_REPEAT          1000
+#define COMMAND_REPEAT          500
 
 #define CTRL_PIN_VBAT           33
 #define CTRL_ADC_VBAT_CHANNEL   ADC1_GPIO33_CHANNEL
@@ -21,6 +21,8 @@
 
 #define CTRL_VBAT_FULL          3900
 #define CTRL_VBAT_LOW           3300
+
+#define CTRL_VBAT_READINGS      10
 
 class Controller {
 public:
@@ -71,6 +73,9 @@ private:
     esp_adc_cal_characteristics_t _adcChars;
     bool _onBattery;
     bool _underVoltage;
+
+    uint32_t _batteryReadings[CTRL_VBAT_READINGS];
+    uint8_t _batteryReading;
 };
 
 #endif

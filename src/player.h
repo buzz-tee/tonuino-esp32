@@ -13,7 +13,7 @@
 #define PLAYER_FREQ_ERROR       2000
 
 #define PLAYER_HTTP_TIMEOUT     1000
-#define PLAYER_PREV_RESTART     5000    // restart current track when more than 5 seconds in
+#define PLAYER_PREV_RESTART     10000   // restart current track when more than 10 seconds in
 #define PLAYER_PAUSE_EXPIRY     30000   // expire pause after 30 seconds -> state to stop, unpause restarts current track
 
 #ifdef PLAYER_SPIRAM

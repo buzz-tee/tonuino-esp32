@@ -11,7 +11,7 @@
 #include "controller.h"
 
 
-#define IDLE_SLEEP_TIMEOUT      120000
+#define IDLE_SLEEP_TIMEOUT      600000
 
 
 CardReader cardReader;
@@ -159,14 +159,14 @@ void loop()
 {
     if (!greetingSent) {
         greetingSent = true;
-        String url = getUrl("greet/") + getSetting("key");
+        String url = getUrl("hello/") + getSetting("key");
         HTTPClient http;
         http.begin(url);
         int httpCode = http.GET();
         if (httpCode == HTTP_CODE_OK) {
+            audioPlayer.beep(600, 4000);
+            audioPlayer.beep(400, 3300);
             audioPlayer.beep(200, 2000);
-            audioPlayer.beep(200, 4000);
-            audioPlayer.beep(200, 8000);
         } else {
             audioPlayer.beep(500, PLAYER_FREQ_ERROR);
         }

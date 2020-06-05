@@ -3,16 +3,18 @@
 #include <driver/adc.h>
 
 Controller::Controller(void) :
-    dataVolumeUp(),
-    dataVolumeDown(),
-    dataPause(),
-    dataNext(),
-    dataPrevious(),
-    resetCallback(nullptr),
-    partyCallback(nullptr),
-    _adcChars(),
-    _onBattery(false),
-    _underVoltage(false) {
+        dataVolumeUp(),
+        dataVolumeDown(),
+        dataPause(),
+        dataNext(),
+        dataPrevious(),
+        resetCallback(nullptr),
+        partyCallback(nullptr),
+        _adcChars(),
+        _onBattery(false),
+        _underVoltage(false),
+        _batteryReading(0) {
+    std::fill_n(_batteryReadings, CTRL_VBAT_READINGS, CTRL_VBAT_FULL);
 }
 
 Controller::~Controller(void) {
@@ -80,7 +82,20 @@ void Controller::_readVoltage() {
     for (int i = 0; i < 4; i++) {
         adc_reading += adc1_get_raw(CTRL_ADC_VBAT_CHANNEL);
     }
-    uint32_t value = esp_adc_cal_raw_to_voltage(adc_reading / 4, &_adcChars) * CTRL_VBAT_FACTOR;
+    _batteryReadings[_batteryReading] = esp_adc_cal_raw_to_voltage(adc_reading / 4, &_adcChars) * CTRL_VBAT_FACTOR;
+    _batteryReading = (_batteryReading + 1) % CTRL_VBAT_READINGS;
+
+    uint32_t value = 0;
+    for (int i = 0; i < CTRL_VBAT_READINGS; i++) {
+        value += (_batteryReadings[i] / CTRL_VBAT_READINGS);
+    }
+
+#ifdef DEBUG
+    if (_batteryReading == 0) {
+        Serial.printf("Battery voltage is %d mV\n", value);
+    }
+#endif
+
     _onBattery = (value < CTRL_VBAT_FULL);
     _underVoltage = (value < CTRL_VBAT_LOW);
 }

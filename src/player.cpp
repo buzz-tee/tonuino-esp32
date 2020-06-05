@@ -119,10 +119,9 @@ void Player::playlist(const char* url) {
         }
     } else {
         Serial.printf("ERROR GET failed, response code was: %d\n", httpCode);
-        _addAction(BEEP, 150, (void*)PLAYER_FREQ_ERROR);
-        _addAction(SILENCE, 500, nullptr);
-        _addAction(BEEP, 750, (void*)PLAYER_FREQ_ERROR);
-        _addAction(SILENCE, 50, nullptr);
+        beep(500, PLAYER_FREQ_ERROR);
+        _addAction(SILENCE, 500, nullptr, true);
+        beep(1500, PLAYER_FREQ_ERROR);
     }
     http.end();
 
@@ -177,12 +176,11 @@ void Player::stop(bool clearPlaylist, bool stopPause)
 
 // Play next track
 // beep - play short confirmation sound
-void Player::next(bool beep) {
+void Player::next(bool playBeep) {
     if (isPlaying()) stop(false);
     _playlistIndex++;
-    if (beep) {
-        _addAction(BEEP, 20, nullptr);
-        _addAction(SILENCE, 50, nullptr);
+    if (playBeep) {
+        beep(20, PLAYER_FREQ_BEEP);
     }
     _addAction(PLAYLIST, 0, nullptr);
     _removeActions(PAUSE);
@@ -190,14 +188,13 @@ void Player::next(bool beep) {
 
 // Play previous track
 // beep - play short confirmation sound
-void Player::previous(bool beep) {
+void Player::previous(bool playBeep) {
     if (isPlaying()) stop(false);
     
     if ((millis() - _started) < PLAYER_PREV_RESTART)
         _playlistIndex--;
-    if (beep) {
-        _addAction(BEEP, 20, nullptr);
-        _addAction(SILENCE, 50, nullptr);
+    if (playBeep) {
+        beep(20, PLAYER_FREQ_BEEP);
     }
     _addAction(PLAYLIST, 0, nullptr);
     _removeActions(PAUSE);
@@ -212,11 +209,9 @@ void Player::pause() {
         _addAction(PLAYLIST, 0, nullptr);
     } else if (wasPaused) {
         _setVolume();
-        _addAction(BEEP, 20, nullptr);
-        _addAction(SILENCE, 50, nullptr);
+        beep(20, PLAYER_FREQ_BEEP);
     } else {
-        _addAction(BEEP, 20, nullptr);
-        _addAction(SILENCE, 50, nullptr);
+        beep(20, PLAYER_FREQ_BEEP);
         _addAction(PAUSE, millis(), nullptr);
     }
 }
@@ -225,8 +220,7 @@ void Player::pause() {
 void Player::volumeUp() {
     if (_volume < PLAYER_MAX_VOLUME) _volume++;
     _setVolume();
-    _addAction(SILENCE, 50, nullptr, true);
-    _addAction(BEEP, 20, nullptr, true);
+    beep(20, PLAYER_FREQ_BEEP);
 
 }
 
@@ -234,8 +228,7 @@ void Player::volumeUp() {
 void Player::volumeDown() {
     if (_volume > 0) _volume--;
     _setVolume();
-    _addAction(SILENCE, 50, nullptr, true);
-    _addAction(BEEP, 20, nullptr, true);
+    beep(20, PLAYER_FREQ_BEEP);
 }
 
 // Returns true if playback in progress (or paused)
@@ -460,7 +453,7 @@ void Player::_nextAction() {
     _currentAction.param = _actions->param;
     _currentAction.next = _actions->next;
 #ifdef PLAYER_DEBUG    
-    if (code != _previousAction) _dumpActions();
+    if (_currentAction.code != _previousAction) _dumpActions();
 #endif
     bool consume = true;
     switch (_currentAction.code) {
@@ -499,7 +492,6 @@ void Player::_dumpActions() {
         "PAUSE",
         "PLAYLIST",
         "STOP",
-        "BEEP_ERROR",
         "BEEP",
         "SILENCE",
         "PAUSE_STOP"
